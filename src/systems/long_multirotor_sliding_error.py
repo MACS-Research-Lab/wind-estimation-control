@@ -8,7 +8,7 @@ from .multirotor import MultirotorTrajEnv
 
 class LongTrajEnv:
 
-    def __init__(self, waypoints: Iterable[np.ndarray], initial_waypoints: Iterable[np.ndarray], base_env: MultirotorTrajEnv, randomize_direction=False, always_modify_wind=False, random_cardinal_wind=False, injection_data = None, window_distance = 10):
+    def __init__(self, waypoints: Iterable[np.ndarray], initial_waypoints: Iterable[np.ndarray], base_env: MultirotorTrajEnv, randomize_direction=False, always_modify_wind=False, random_cardinal_wind=False, injection_data = None, window_distance = 10, has_turbulence=False):
         self.waypoints = waypoints
         self.initial_waypoints = initial_waypoints
 
@@ -31,6 +31,8 @@ class LongTrajEnv:
         self.real_waypt_idx = None
         self.random_cardinal_wind = random_cardinal_wind
         self.base_env.window_distance = window_distance
+        self.start_alt = 0
+        self.base_env.has_turbulence = has_turbulence
         
         if injection_data is not None: # used for injecting wind mid-flight
             self.base_env.has_injection = True
@@ -45,15 +47,21 @@ class LongTrajEnv:
         self.base_env.completed_distance = 0
         self.base_env.random_cardinal_wind = self.random_cardinal_wind
         self.base_env.total_t = 0
+        # TODO: make sure this works for all trajectories
+        self.base_env.prev_waypt = np.array([0,0,self.start_alt])
+        self.base_env.prev_real_waypt = np.array([0,0,self.start_alt])
+        self.base_env.next_waypt = self.initial_waypoints[self.real_waypt_idx]
+        # self.base_env.vehicle.position[2] = self.start_alt
 
         self.base_env.reset(uav_x=np.concatenate([np.zeros(15, np.float32)]), modify_wind=True)
-        waypt_vec = self.waypoints[self.current_waypoint_idx+1] - np.array([0,0,0])
+        waypt_vec = self.waypoints[self.current_waypoint_idx+1] - np.array([0,0,self.start_alt])
         self.base_env._des_unit_vec = waypt_vec / (np.linalg.norm(waypt_vec)+1e-6)
         
-        # TODO: make sure this works for all trajectories
-        self.base_env.prev_waypt = np.array([0,0,0])
-        self.base_env.prev_real_waypt = np.array([0,0,0])
-        self.base_env.next_waypt = self.initial_waypoints[self.real_waypt_idx]
+        # self.base_env.prev_waypt = np.array([0,0,self.start_alt])
+        # self.base_env.prev_real_waypt = np.array([0,0,self.start_alt])
+        # self.base_env.next_waypt = self.initial_waypoints[self.real_waypt_idx]
+        self.base_env.vehicle.position[2] = self.start_alt
+
         return self.base_env.state
 
 
@@ -92,12 +100,10 @@ class LongTrajEnv:
                 
 
         if not done:
-            if info.get('tipped') or info.get('outoftime'):
+            if info.get('tipped') or info.get('outoftime') or info.get('crashed'):
                 done = True
                 reward -= 2500 # negative reward for not finishing (equivalent to 15 seconds outside the radius)
 
         return s, reward, done, info
-    
-
     
         

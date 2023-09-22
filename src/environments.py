@@ -31,7 +31,7 @@ class OctorotorEnvSelector():
             "leashed": (LeashBaseEnv, SlidingLongEnv) 
         }
     
-    def get_env(self, env_name: str, params: dict, wind_range: list, waypts: np.ndarray):
+    def get_env(self, env_name: str, params: dict, wind_range: list, waypts: np.ndarray, start_alt: int = 0, has_turbulence: bool = False):
         base_env_class, long_env_class = self.envs[env_name]
         
         leash = env_name == "leashed"
@@ -51,16 +51,18 @@ class OctorotorEnvSelector():
         bounding_len = params['bounding_rect_length'] if 'bounding_rect_length' in params.keys() else 1000
         
         traj = Trajectory(None, points=waypts, resolution=bounding_len) 
-        wpts = traj.generate_trajectory(curr_pos=np.array([0,0,0]))
-
+        wpts = traj.generate_trajectory(curr_pos=np.array([0,0,start_alt]))
         
         long_env = long_env_class( # can clean this up by adding all to a dict then just passing the **dict
             waypoints = wpts,
             base_env = base_env_class(**base_params),
             initial_waypoints = waypts,
             randomize_direction= False,
-            window_distance = params['window_distance']
+            window_distance = params['window_distance'],
+            has_turbulence = has_turbulence
         )
-       
-        
+
+        long_env.start_alt = start_alt
+        long_env.base_env.vehicle.position[2] = start_alt
+
         return long_env

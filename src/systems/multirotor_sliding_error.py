@@ -20,6 +20,8 @@ from multirotor.controller import (
     Controller
 )
 
+from systems.dryden_python_implementation import Wind_Model
+
 from .base import SystemEnv
 
 DEFAULTS = Namespace(
@@ -223,6 +225,7 @@ class MultirotorTrajEnv(SystemEnv):
         self.wind_y = np.random.uniform(self.wind_ranges[1][0], self.wind_ranges[1][1])
         self.wind_z = np.random.uniform(self.wind_ranges[2][0], self.wind_ranges[2][1])
         self.disturbance_fn = self.random_wind
+        self.noise_correlation = np.zeros(6)
         super().__init__(system=system, q=q, r=r, dt=sp.dt, seed=seed, dtype=sp.dtype)
 
         self.observation_space = gym.spaces.Box(
@@ -251,6 +254,7 @@ class MultirotorTrajEnv(SystemEnv):
         self.total_t = 0
         self.has_injection = False
         self.injected = False
+        self.has_turbulence = False
 
     @property
     def state(self) -> np.ndarray:
@@ -333,6 +337,9 @@ class MultirotorTrajEnv(SystemEnv):
         # Manually set underlying vehicle's state
         self.vehicle.state = self.x
 
+        if self.has_turbulence:
+            self.get_turbulence(self.prev_waypt, self.next_waypt)
+
         return self.state
 
 
@@ -387,16 +394,22 @@ class MultirotorTrajEnv(SystemEnv):
             self.vehicle.state = self.x
             self.vehicle.t = self.t
 
+            self.vehicle.state += self.generate_noise_vector()
+
+            if self.has_turbulence:
+                self.update_wind_with_turbulence(intersection_point, self.prev_waypt, self.next_waypt)
+
             outofbounds = normal_distance > self.safety_radius 
             
             reward -= normal_distance / 5
             
             outoftime = self.t >= self.period
             tipped = np.any(np.abs(self.x[6:9]) > self._max_angle * 8)
-            done = outoftime or reached or tipped
+            crashed = self.vehicle.position[2] <= 0
+            done = outoftime or reached or tipped or crashed
 
             if done:
-                i.update(dict(reached=reached, outofbounds=outofbounds, outoftime=outoftime, tipped=tipped))
+                i.update(dict(reached=reached, outofbounds=outofbounds, outoftime=outoftime, tipped=tipped, crashed=crashed))
                 break
 
         observed_state = np.concatenate([self.next_waypt - self.x[:3], self.x[3:15]], dtype=np.float32)
@@ -404,6 +417,29 @@ class MultirotorTrajEnv(SystemEnv):
 
     def ctrl_fn(self, x):
         return np.zeros(3, self.dtype)
+    
+    # should be added to self.vehicle.state
+    def generate_noise_vector(self):
+        noise_vector = np.zeros_like(self.vehicle.state)
+
+        # noise_vector[0] = np.random.normal(0, 0.0167) # x
+        # noise_vector[1] = np.random.normal(0, 0.0167) # y
+        # noise_vector[2] = np.random.normal(0, 0.0167/2) # z
+        noise_vector[3] = np.random.normal(0, 0.0167/10) # vx
+        noise_vector[4] = np.random.normal(0, 0.0167/10) # vy
+        # noise_vector[5] = np.random.normal(0, 0.0167/100) # vz
+        noise_vector[5] = 0
+
+        w = 0.001
+        tau = 0.002
+        v = 0.001
+
+        for i in range(6):
+            self.noise_correlation[i] = self.noise_correlation[i] * np.exp(-self.dt / tau) + np.random.normal(0,w)
+            noise_vector[i+6] = self.noise_correlation[i] + np.random.normal(0,v)
+
+        return noise_vector
+
         
     def calculate_safe_sliding_bound(self, reference_point, intersection_point, distance=5):
         # Convert points to numpy arrays for vector calculations
@@ -423,3 +459,21 @@ class MultirotorTrajEnv(SystemEnv):
             # Calculate the intermediate point that is 'distance' units along the vector_to_reference
             intermediate_point = intersection_point + (distance / distance_to_reference) * vector_to_reference
             return intermediate_point
+        
+    def get_turbulence(self, prev_waypt, curr_waypt):
+        wind_vec = np.array([self.wind_x, self.wind_y, self.wind_z])
+
+        wind_model = Wind_Model()
+        time, locs, turbulent_wind = wind_model.get_wind_vector_waypoint(start_wp=prev_waypt, end_wp=curr_waypt, veh_speed=7, turbulence=15, base_wind_vec=wind_vec)
+        self.turbulent_wind = turbulent_wind
+
+    def update_wind_with_turbulence(self, intersection_point, prev_waypt, next_waypt):
+        waypt_vec = next_waypt - prev_waypt
+        progress_vec = intersection_point - prev_waypt
+
+        percent_completed =  np.linalg.norm(progress_vec) / np.linalg.norm(waypt_vec)
+        index = int(len(self.turbulent_wind) * percent_completed) - 1
+
+        self.wind_x = self.turbulent_wind[index][0]
+        self.wind_y = self.turbulent_wind[index][1]
+        self.wind_z = self.turbulent_wind[index][2]
