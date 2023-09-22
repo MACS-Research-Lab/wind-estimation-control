@@ -1,0 +1,7 @@
+{
+    "python.analysis.extraPaths": [
+        "./src/vendor/multirotor"
+    ],
+    "jupyter.allowUnauthorizedRemoteConnection": true,
+    "python.analysis.typeCheckingMode": "off"
+}

@@ -1,0 +1,21 @@
+name: supervisor-control
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - numpy
+  - pandas
+  - matplotlib
+  - jupyter
+  - tqdm
+  - scikit-learn
+  - pytorch::pytorch=1.12
+  - cudatoolkit=10.2
+  - control
+  - slycot
+  - numba
+  - optuna
+  - seaborn
+  - pip
+
+
