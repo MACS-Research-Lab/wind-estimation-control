@@ -53,7 +53,7 @@ class LongTrajEnv:
         self.base_env.next_waypt = self.initial_waypoints[self.real_waypt_idx]
         # self.base_env.vehicle.position[2] = self.start_alt
 
-        self.base_env.reset(uav_x=np.concatenate([np.zeros(15, np.float32)]), modify_wind=True)
+        self.base_env.reset(uav_x=np.concatenate([np.zeros(17, np.float32)]), modify_wind=True)
         waypt_vec = self.waypoints[self.current_waypoint_idx+1] - np.array([0,0,self.start_alt])
         self.base_env._des_unit_vec = waypt_vec / (np.linalg.norm(waypt_vec)+1e-6)
         
