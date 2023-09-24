@@ -119,7 +119,7 @@ def get_env(wind_ranges, scurve=False, **kwargs):
         wind_ranges=wind_ranges,
         proximity=5,
         seed=kwargs['seed'])
-    return BlendingEnv(**kw)
+    return MultirotorTrajEnv(**kw)
 
 
 
@@ -140,25 +140,29 @@ def make_objective(args: Namespace=DEFAULTS):
         )
 
         env_kwargs['steps_u'] = 50 # assume half a second
-        # env_kwargs['scaling_factor'] = trial.suggest_int('scaling_factor', 1, 7, step=1) # for now, use this to determine the action range
-        env_kwargs['scaling_factor'] = 5
+        env_kwargs['scaling_factor'] = trial.suggest_int('scaling_factor', 1, 7, step=1) # for now, use this to determine the action range
+        # env_kwargs['scaling_factor'] = 5
         
-        square_np = np.array([[100,0,0], [100,100,0], [0,100,0], [0,0,0]]) # set up your trajectory here
+        square_np = np.array([[100,0,30], [100,100,30], [0,100,30], [0,0,30]]) # set up your trajectory here
         square_traj = Trajectory(None, points=square_np, resolution=bounding_rect_length)
-        square_wpts = square_traj.generate_trajectory(curr_pos=np.array([0,0,0]))
+        square_wpts = square_traj.generate_trajectory(curr_pos=np.array([0,0,30]))
 
-        # wind_d = trial.suggest_int("window_distance", 10, 50)
-        wind_d = 10
+        wind_d = trial.suggest_int("window_distance", 10, 50)
+        # wind_d = 10
         
-        env = LongBlendingEnv(
+        env = LongTrajEnv(
             waypoints = square_wpts,
             base_env = get_env(wind_ranges = [(0,10), (0,10), (0,0)], **env_kwargs), # what ranges of wind you want to experience in hyperparmeter optimization [(xmin, xmax), (ymin, ymax), (zmin, zmax)]
             initial_waypoints=square_np,
             randomize_direction=True, # whether to randomize the direction the trajectory is flown during HPO
             always_modify_wind=False, # whether to generate a different wind vector for each bounding box, note: if you include this, fix the length of the bounding box
             random_cardinal_wind=all_directions,
-            window_distance = wind_d
+            window_distance = wind_d,
+            has_turbulence=False
         )
+        
+        env.start_alt = 30
+        env.base_env.vehicle.position[2] = 30
         
         policy_layers = trial.suggest_categorical("policy_layers", [1,2,3])
         policy_size = trial.suggest_int("policy_size", 32, 256, step=32)
@@ -223,13 +227,17 @@ def make_objective(args: Namespace=DEFAULTS):
 
         rewards = []
         for wind_range in all_wind_ranges:
-            env = LongBlendingEnv(
+            env = LongTrajEnv(
                 waypoints = square_wpts,
                 base_env = get_env(wind_ranges = wind_range, **env_kwargs),
                 initial_waypoints=square_np,
                 window_distance=wind_d,
-                randomize_direction=False # during evaluation, fix the directionf or consistency
+                randomize_direction=False, # during evaluation, fix the directionf or consistency,
+                has_turbulence=False
             )
+            
+            env.start_alt = 30
+            env.base_env.vehicle.position[2] = 30
 
             episode_reward = 0
             state = np.array(env.reset(), dtype=np.float32)

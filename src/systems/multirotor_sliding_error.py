@@ -230,7 +230,7 @@ class MultirotorTrajEnv(SystemEnv):
 
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
-            shape=(15,), dtype=self.dtype
+            shape=(17,), dtype=self.dtype
         )
         self.action_space = gym.spaces.Box(
             low=-1, high=1, shape=(3,), dtype=self.dtype
@@ -319,6 +319,7 @@ class MultirotorTrajEnv(SystemEnv):
         self.state_range[6:9] = 2 * self.ctrl.ctrl_v.max_tilt
         self.state_range[9:12] = 2 * self.ctrl.ctrl_v.max_tilt * self.ctrl.ctrl_a.k_p
         self.state_range[12:15] = self.state_range[:3]
+        self.state_range[15:17] = 30 # -15 to 15
 
         self.action_range = self.scaling_factor
         # Max overshoot allowed, which will cause episode to terminate
@@ -331,8 +332,9 @@ class MultirotorTrajEnv(SystemEnv):
         ori = np.asarray(uav_x[6:9])
         rat = np.asarray(uav_x[9:12]) 
         err_proj = np.asarray(uav_x[12:15]) 
+        wind = np.asarray(uav_x[15:17])
 
-        self.x = np.concatenate((err_wp, vel, ori, rat, err_proj), dtype=self.dtype) 
+        self.x = np.concatenate((err_wp, vel, ori, rat, err_proj, wind), dtype=self.dtype) 
 
         # Manually set underlying vehicle's state
         self.vehicle.state = self.x
@@ -376,6 +378,8 @@ class MultirotorTrajEnv(SystemEnv):
             # Calculate the intersection point coordinates
             prev_intersection_point = self.prev_waypt + prev_scalar_factor * self._des_unit_vec
             x, r, d, *_, i = super().step(np.concatenate(([self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=self.window_distance),u])))
+            self.x[15] = self.wind_x
+            self.x[16] = self.wind_y
             
             dist = np.linalg.norm(self.next_waypt - self.x[:3])
             reached = dist <= self._proximity 
@@ -412,7 +416,7 @@ class MultirotorTrajEnv(SystemEnv):
                 i.update(dict(reached=reached, outofbounds=outofbounds, outoftime=outoftime, tipped=tipped, crashed=crashed))
                 break
 
-        observed_state = np.concatenate([self.next_waypt - self.x[:3], self.x[3:15]], dtype=np.float32)
+        observed_state = np.concatenate([self.next_waypt - self.x[:3], self.x[3:17]], dtype=np.float32)
         return self.normalize_state(observed_state), reward, done, *_, i
 
     def ctrl_fn(self, x):
@@ -464,7 +468,7 @@ class MultirotorTrajEnv(SystemEnv):
         wind_vec = np.array([self.wind_x, self.wind_y, self.wind_z])
 
         wind_model = Wind_Model()
-        time, locs, turbulent_wind = wind_model.get_wind_vector_waypoint(start_wp=prev_waypt, end_wp=curr_waypt, veh_speed=7, turbulence=15, base_wind_vec=wind_vec)
+        time, locs, turbulent_wind = wind_model.get_wind_vector_waypoint(start_wp=prev_waypt, end_wp=curr_waypt, veh_speed=7, turbulence=7.7, base_wind_vec=wind_vec)
         self.turbulent_wind = turbulent_wind
 
     def update_wind_with_turbulence(self, intersection_point, prev_waypt, next_waypt):
