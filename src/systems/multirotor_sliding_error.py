@@ -468,14 +468,18 @@ class MultirotorTrajEnv(SystemEnv):
         wind_vec = np.array([self.wind_x, self.wind_y, self.wind_z])
 
         wind_model = Wind_Model()
-        time, locs, turbulent_wind = wind_model.get_wind_vector_waypoint(start_wp=prev_waypt, end_wp=curr_waypt, veh_speed=7, turbulence=7.7, base_wind_vec=wind_vec)
+        
+        if np.array_equal(prev_waypt, curr_waypt):
+            turbulent_wind = [wind_vec]
+        else:
+            time, locs, turbulent_wind = wind_model.get_wind_vector_waypoint(start_wp=prev_waypt, end_wp=curr_waypt, veh_speed=1, turbulence=7.7, base_wind_vec=wind_vec)
         self.turbulent_wind = turbulent_wind
 
     def update_wind_with_turbulence(self, intersection_point, prev_waypt, next_waypt):
         waypt_vec = next_waypt - prev_waypt
         progress_vec = intersection_point - prev_waypt
 
-        percent_completed =  np.linalg.norm(progress_vec) / np.linalg.norm(waypt_vec)
+        percent_completed =  np.clip(np.linalg.norm(progress_vec) / (np.linalg.norm(waypt_vec)+1e-6), 0, 1)
         index = int(len(self.turbulent_wind) * percent_completed) - 1
 
         self.wind_x = self.turbulent_wind[index][0]
