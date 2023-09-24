@@ -11,8 +11,8 @@ import numpy as np
 from multirotor.trajectories import Trajectory
 from rl import learn_rl, evaluate_rl, load_agent
 from stable_baselines3.common.callbacks import BaseCallback
-from systems.multirotor_sliding_error import Multirotor, MultirotorTrajEnv, VP
-from systems.long_multirotor_sliding_error import LongTrajEnv
+from systems.multirotor_naive import Multirotor, MultirotorTrajEnv, VP
+from systems.long_multirotor_naive import LongTrajEnv
 # from systems.long_blending import LongBlendingEnv
 # from systems.blending import BlendingEnv
 
@@ -158,8 +158,12 @@ def make_objective(args: Namespace=DEFAULTS):
             always_modify_wind=False, # whether to generate a different wind vector for each bounding box, note: if you include this, fix the length of the bounding box
             random_cardinal_wind=all_directions,
             window_distance = wind_d,
-            has_turbulence=False
+            has_turbulence=True
         )
+        
+        env.reset()
+        
+        env.base_env.vehicle.mass = np.random.normal(10.33, 0.75)
         
         env.start_alt = 30
         env.base_env.vehicle.position[2] = 30
@@ -233,7 +237,7 @@ def make_objective(args: Namespace=DEFAULTS):
                 initial_waypoints=square_np,
                 window_distance=wind_d,
                 randomize_direction=False, # during evaluation, fix the directionf or consistency,
-                has_turbulence=False
+                has_turbulence=True
             )
             
             env.start_alt = 30
