@@ -11,8 +11,8 @@ import numpy as np
 from multirotor.trajectories import Trajectory
 from rl import learn_rl, evaluate_rl, load_agent
 from stable_baselines3.common.callbacks import BaseCallback
-from systems.multirotor_naive import Multirotor, MultirotorTrajEnv, VP
-from systems.long_multirotor_naive import LongTrajEnv
+from systems.multirotor_sliding_error import Multirotor, MultirotorTrajEnv, VP
+from systems.long_multirotor_sliding_error import LongTrajEnv
 # from systems.long_blending import LongBlendingEnv
 # from systems.blending import BlendingEnv
 

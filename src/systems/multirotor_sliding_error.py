@@ -378,8 +378,8 @@ class MultirotorTrajEnv(SystemEnv):
             # Calculate the intersection point coordinates
             prev_intersection_point = self.prev_waypt + prev_scalar_factor * self._des_unit_vec
             x, r, d, *_, i = super().step(np.concatenate(([self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=self.window_distance),u])))
-            self.x[15] = self.wind_x
-            self.x[16] = self.wind_y
+            self.x[15] = self.wind_x + np.random.normal(0, 0.5)
+            self.x[16] = self.wind_y + np.random.normal(0, 0.5)
             
             dist = np.linalg.norm(self.next_waypt - self.x[:3])
             reached = dist <= self._proximity 
