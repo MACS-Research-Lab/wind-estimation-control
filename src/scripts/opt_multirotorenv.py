@@ -11,8 +11,8 @@ import numpy as np
 from multirotor.trajectories import Trajectory
 from rl import learn_rl, evaluate_rl, load_agent
 from stable_baselines3.common.callbacks import BaseCallback
-from systems.multirotor_sliding_error import Multirotor, MultirotorTrajEnv, VP
-from systems.long_multirotor_sliding_error import LongTrajEnv
+from systems.multirotor_wind_estimation import Multirotor, MultirotorTrajEnv, VP
+from systems.long_multirotor_wind_estimation import LongTrajEnv
 # from systems.long_blending import LongBlendingEnv
 # from systems.blending import BlendingEnv
 
@@ -140,14 +140,18 @@ def make_objective(args: Namespace=DEFAULTS):
         )
 
         env_kwargs['steps_u'] = 50 # assume half a second
-        env_kwargs['scaling_factor'] = trial.suggest_int('scaling_factor', 1, 7, step=1) # for now, use this to determine the action range
+        # env_kwargs['scaling_factor'] = trial.suggest_int('scaling_factor', 1, 7, step=1) # for now, use this to determine the action range
+        env_kwargs['scaling_factor'] = trial.suggest_int('scaling_factor', 2, 5, step=1) # for now, use this to determine the action range
+
         # env_kwargs['scaling_factor'] = 5
         
         square_np = np.array([[100,0,30], [100,100,30], [0,100,30], [0,0,30]]) # set up your trajectory here
         square_traj = Trajectory(None, points=square_np, resolution=bounding_rect_length)
         square_wpts = square_traj.generate_trajectory(curr_pos=np.array([0,0,30]))
 
-        wind_d = trial.suggest_int("window_distance", 10, 50)
+        # wind_d = trial.suggest_int("window_distance", 10, 50)
+        wind_d = trial.suggest_int("window_distance", 10, 20)
+
         # wind_d = 10
         
         env = LongTrajEnv(
@@ -163,7 +167,7 @@ def make_objective(args: Namespace=DEFAULTS):
         
         env.reset()
         
-        env.base_env.vehicle.mass = np.random.normal(10.33, 0.75)
+        env.base_env.vehicle.params.mass = np.random.normal(10.33, 0.75)
         
         env.start_alt = 30
         env.base_env.vehicle.position[2] = 30
@@ -316,14 +320,14 @@ if __name__=='__main__':
     parser.add_argument('--use_study', help='Use top 10 parameters from this trial to start', default=None)
     args = parser.parse_args()
 
-    if not args.append:
-        import shutil
-        path = local_path / ('tensorboard/MultirotorTrajEnv/optstudy/' + args.study_name)
-        shutil.rmtree(path=path, ignore_errors=True)
-        try:
-            os.remove(local_path / ('studies/' + args.study_name + '.db'))
-        except OSError:
-            pass
+    # if not args.append:
+    #     import shutil
+    #     path = local_path / ('tensorboard/MultirotorTrajEnv/optstudy/' + args.study_name)
+    #     shutil.rmtree(path=path, ignore_errors=True)
+    #     try:
+    #         os.remove(local_path / ('studies/' + args.study_name + '.db'))
+    #     except OSError:
+    #         pass
     
     # create study if it doesn't exist. The study will be reused with a new seed
     # by each process

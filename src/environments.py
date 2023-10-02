@@ -9,6 +9,16 @@ from systems.long_multirotor_sliding_error import LongTrajEnv as SlidingLongEnv
 from systems.long_blending import LongBlendingEnv
 from systems.blending import BlendingEnv
 from systems.sliding_error_leash import MultirotorTrajEnv as LeashBaseEnv
+from systems.long_multirotor_naive import LongTrajEnv as NaiveLongEnv
+from systems.multirotor_naive import MultirotorTrajEnv as NaiveBaseEnv
+from systems.long_multirotor_oracle import LongTrajEnv as OracleLongEnv
+from systems.multirotor_oracle import MultirotorTrajEnv as OracleBaseEnv
+from systems.long_multirotor_wind_estimation import LongTrajEnv as LSTMLongEnv
+from systems.multirotor_wind_estimation import MultirotorTrajEnv as LSTMBaseEnv
+from systems.long_dji_sliding_error import LongTrajEnv as DJILongSliding
+from systems.dji_sliding_error import MultirotorTrajEnv as DJIBaseSliding
+from systems.long_dji_wind_estimation import LongTrajEnv as LSTMDJILongEnv
+from systems.dji_wind_estimation import MultirotorTrajEnv as LSTMDJIBaseEnv
 
 
 def setup_base_params(wind_ranges, **kwargs):
@@ -28,7 +38,12 @@ class OctorotorEnvSelector():
         self.envs = {
             "sliding": (SlidingBaseEnv, SlidingLongEnv),
             "blending": (BlendingEnv, LongBlendingEnv),
-            "leashed": (LeashBaseEnv, SlidingLongEnv) 
+            "leashed": (LeashBaseEnv, SlidingLongEnv),
+            "naive": (NaiveBaseEnv, NaiveLongEnv),
+            "oracle": (OracleBaseEnv, OracleLongEnv),
+            "lstm": (LSTMBaseEnv, LSTMLongEnv) ,
+            "dji_sliding": (DJIBaseSliding, DJILongSliding),
+            "dji_lstm": (LSTMDJIBaseEnv, LSTMDJILongEnv)
         }
     
     def get_env(self, env_name: str, params: dict, wind_range: list, waypts: np.ndarray, start_alt: int = 0, has_turbulence: bool = False):

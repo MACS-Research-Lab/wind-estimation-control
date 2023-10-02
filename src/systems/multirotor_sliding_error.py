@@ -59,7 +59,7 @@ VP = VehicleParams(
     battery=BP,
     # angles in 45 deg increments, rotated to align with
     # model setup in gazebo sim (not part of this repo)
-    angles=np.linspace(0, -2*np.pi, num=8, endpoint=False) + 0.375 * np.pi,
+    angles=np.linspace(0, -2*np.pi, num=8, endpoint=False) + 0.375 * np.pi, # np.pi / 2
     distances=np.ones(8) * 0.635,
     clockwise=[-1,1,-1,1,-1,1,-1,1],
     mass=10.66,
