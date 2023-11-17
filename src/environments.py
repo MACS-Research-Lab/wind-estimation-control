@@ -19,7 +19,7 @@ from systems.long_dji_sliding_error import LongTrajEnv as DJILongSliding
 from systems.dji_sliding_error import MultirotorTrajEnv as DJIBaseSliding
 from systems.long_dji_wind_estimation import LongTrajEnv as LSTMDJILongEnv
 from systems.dji_wind_estimation import MultirotorTrajEnv as LSTMDJIBaseEnv
-
+from systems.ardupilot_wind import MultirotorTrajEnv as ArduPilotBaseEnv
 
 def setup_base_params(wind_ranges, **kwargs):
      kw = dict(
@@ -43,7 +43,8 @@ class OctorotorEnvSelector():
             "oracle": (OracleBaseEnv, OracleLongEnv),
             "lstm": (LSTMBaseEnv, LSTMLongEnv) ,
             "dji_sliding": (DJIBaseSliding, DJILongSliding),
-            "dji_lstm": (LSTMDJIBaseEnv, LSTMDJILongEnv)
+            "dji_lstm": (LSTMDJIBaseEnv, LSTMDJILongEnv),
+            "ardupilot": (ArduPilotBaseEnv, LSTMLongEnv)
         }
     
     def get_env(self, env_name: str, params: dict, wind_range: list, waypts: np.ndarray, start_alt: int = 0, has_turbulence: bool = False):
