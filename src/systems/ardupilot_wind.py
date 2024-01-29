@@ -146,7 +146,8 @@ def create_multirotor(
     elif kind=='speeds':
         inputs = [('w%02d' % n) for n in range(len(m.propellers))]
         def update_fn(t, x, u, params):
-            speeds = np.clip(u, a_min=0, a_max=max_rads) 
+            speeds = np.clip(u, a_min=0, a_max=max_rads)
+            # speeds = speeds * fault_mult 
             dxdt = m.dxdt_speeds(t, x.astype(m.dtype), speeds,
                 disturb_forces=disturbance_fn(m))
             m.speeds = speeds
@@ -389,6 +390,7 @@ class MultirotorTrajEnv(SystemEnv):
             # Calculate the intersection point coordinates
             self.prev_intersection_point = self.prev_waypt + prev_scalar_factor * self._des_unit_vec
             # x, r, d, *_, i = super().step(np.concatenate(([self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=self.window_distance),u])))
+            # print(u)
             x, r, d, *_, i = super().step(u)
 
             
@@ -409,7 +411,7 @@ class MultirotorTrajEnv(SystemEnv):
             self.vehicle.state = self.x
             self.vehicle.t = self.t
 
-            self.vehicle.state += self.generate_noise_vector()
+            # self.vehicle.state += self.generate_noise_vector()
 
             if self.has_turbulence:
                 self.update_wind_with_turbulence(intersection_point, self.prev_waypt, self.next_waypt)
@@ -420,7 +422,13 @@ class MultirotorTrajEnv(SystemEnv):
             
             outoftime = self.t >= self.period
             tipped = np.any(np.abs(self.x[6:9]) > self._max_angle * 8)
-            crashed = self.vehicle.position[2] <= 0
+
+            if self.vehicle.position[2] < 0:
+                self.vehicle.position[2] = 0
+                if self.vehicle.velocity[2] < 0:
+                    self.vehicle.velocity[2] = 0
+            # crashed = self.vehicle.position[2] <= 0
+            crashed = False
             done = outoftime or reached or tipped or crashed
 
             if done:

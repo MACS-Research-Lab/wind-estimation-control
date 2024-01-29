@@ -7,10 +7,11 @@ class FaultInjector():
         self.env = env
 
     def inject_full_loss(self, motor_index):
-        self.env.base_env.vehicle.params.propellers[motor_index].k_thrust *= 0 #TODO: make sure these are not reset
-        self.env.base_env.vehicle.params.propellers[motor_index].k_drag *= 0
-        self.env.base_env.vehicle.propellers[motor_index].params.k_thrust *= 0
-        self.env.base_env.vehicle.propellers[motor_index].params.k_drag *= 0
+        # self.env.base_env.fault_mult[motor_index] = 0
+        # self.env.base_env.vehicle.params.propellers[motor_index].k_thrust *= 0 #TODO: make sure these are not reset
+        # self.env.base_env.vehicle.params.propellers[motor_index].k_drag *= 0
+        # self.env.base_env.vehicle.propellers[motor_index].params.k_thrust *= 0
+        # self.env.base_env.vehicle.propellers[motor_index].params.k_drag *= 0
         return self.env
 
     def inject_partial_loss(self, motor_index, percent_loss):

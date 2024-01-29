@@ -34,7 +34,7 @@ DEFAULTS = Namespace(
     max_rads = 700
 )
 
-fault_mult: np.ndarray = np.array([1,1,1,1,1,1,1,1])
+# fault_mult = np.array([1,1,0.01,1,1,1,1,1])
 
 BP = BatteryParams(max_voltage=22.2)
 MP = MotorParams(
@@ -167,10 +167,13 @@ def create_multirotor(
     elif kind=='velocities':
         inputs=['vx','vy','vz']
         def update_fn(t, x, u, params):
+            
             dynamics = ctrl.step(u, ref_is_error=False, is_velocity=True)
             speeds = m.allocate_control(dynamics[0], dynamics[1:4]) # see if the inverse works with small eps
-            speeds *= fault_mult # maybe do tha in the alocate control function
+            # speeds *= fault_mult # maybe do tha in the alocate control function
             speeds = np.clip(speeds, a_min=0, a_max=max_rads) 
+            # speeds[3] *= 0.9
+            print(speeds)
             dxdt = m.dxdt_speeds(t, x.astype(m.dtype), speeds,
                 disturb_forces=disturbance_fn(m))
             m.speeds = speeds
@@ -421,6 +424,7 @@ class MultirotorTrajEnv(SystemEnv):
             
             outoftime = self.t >= self.period
             tipped = np.any(np.abs(self.x[6:9]) > self._max_angle * 8)
+            # tipped = False
             crashed = self.vehicle.position[2] <= 0
             done = outoftime or reached or tipped or crashed
 

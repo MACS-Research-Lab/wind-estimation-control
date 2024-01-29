@@ -1,6 +1,6 @@
  1. Run 'conda env create --file=environment.yml'
 
- 2. Activate conda env with 'conda activate aaai24'
+ 2. Activate conda env with 'conda activate supervisor-control'
 
  3. 'pip install <packagename>' the following packages
     - setuptools==65.5.0
