@@ -247,7 +247,7 @@ class MultirotorTrajEnv(SystemEnv):
         self.x = np.zeros(self.observation_space.shape, self.dtype)
         self.steps_u = steps_u
 
-        self.period = 150 # seconds
+        self.period = 150*2 #TODO: CHANGED THIS # seconds
         self._proximity = proximity
         self.always_modify_wind = False
         self.random_cardinal_wind = False
@@ -324,7 +324,10 @@ class MultirotorTrajEnv(SystemEnv):
         self.action_range = self.scaling_factor
         # Max overshoot allowed, which will cause episode to terminate
         self._max_pos = self.safety_radius * (1 + self.overshoot_factor) / 2
-        self._max_angle = self.ctrl.ctrl_v.max_tilt * (1 + self.overshoot_factor)
+        # self._max_angle = self.ctrl.ctrl_v.max_tilt * (1 + self.overshoot_factor)
+        # self._max_angle = self.ctrl.ctrl_v.max_tilt * 2
+        self._max_angle = 120
+        
         self.time_penalty = self.dt * self.steps_u
 
         err_wp = np.asarray(uav_x[0:3]) 
@@ -408,7 +411,7 @@ class MultirotorTrajEnv(SystemEnv):
             reward -= normal_distance / 5
             
             outoftime = self.t >= self.period
-            tipped = np.any(np.abs(self.x[6:9]) > self._max_angle * 8)
+            tipped = np.any(np.abs(self.x[6:9]) > self._max_angle)
             crashed = self.vehicle.position[2] <= 0
             done = outoftime or reached or tipped or crashed
 

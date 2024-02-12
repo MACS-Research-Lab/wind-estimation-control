@@ -152,10 +152,12 @@ class PIDController:
         else:
             err = reference - measurement
         err_p = self.k_p * err
-        err_i = self.k_i * np.clip(
-            self.err_i + trapezoid((self.err, err), dx=dt, axis=0),
-            a_min=-self.max_err_i, a_max=self.max_err_i
-        )
+        # err_i = self.k_i * np.clip(
+        #     self.err_i + trapezoid((self.err, err), dx=dt, axis=0),
+        #     a_min=-self.max_err_i, a_max=self.max_err_i
+        # )
+        err_i = self.err_i + self.k_i * (err + self.err) * 0.5 * dt
+        err_i = np.clip(err_i, a_min=-self.max_err_i, a_max=self.max_err_i)
         err_d = self.k_d * (err - self.err) / dt
         action = err_p + err_i + err_d
         if persist:
