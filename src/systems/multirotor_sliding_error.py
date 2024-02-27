@@ -29,16 +29,16 @@ DEFAULTS = Namespace(
     max_velocity = 15,
     max_acceleration = 2.5,
     max_tilt = np.pi / 12,
-    max_rads = 700
+    max_rads = 670
 )
 
-fault_mult: np.ndarray = np.array([1,1,1,1,1,1,1,1])
+fault_mult: np.ndarray = np.array([0,1,1,1,1,1,1,1])
 
 BP = BatteryParams(max_voltage=22.2)
 MP = MotorParams(
     moment_of_inertia=5e-5,
-    # resistance=0.27,
-    resistance=0.081,
+    resistance=0.27,
+    # resistance=0.081,
     k_emf=0.0265,
     k_motor=0.0932,
     speed_voltage_scaling=0.0347,
@@ -51,8 +51,8 @@ PP = PropellerParams(
     # k_thrust=5.28847e-05, # 15 inch propeller
     k_drag=1.8503e-06, # 18-inch propeller
     # k_drag=1.34545e-06, # 15-inch propeller
-    # motor=MP
-    motor=None
+    motor=MP
+    # motor=None
 )
 VP = VehicleParams(
     propellers=[deepcopy(PP) for _ in range(8)],
@@ -60,6 +60,7 @@ VP = VehicleParams(
     # angles in 45 deg increments, rotated to align with
     # model setup in gazebo sim (not part of this repo)
     angles=np.linspace(0, -2*np.pi, num=8, endpoint=False) + 0.375 * np.pi, # np.pi / 2
+    # angles=np.linspace(0, -2*np.pi, num=8, endpoint=False) + np.pi / 2, # np.pi / 2
     distances=np.ones(8) * 0.635,
     clockwise=[-1,1,-1,1,-1,1,-1,1],
     mass=10.66,
@@ -166,9 +167,16 @@ def create_multirotor(
         inputs=['vx','vy','vz']
         def update_fn(t, x, u, params):
             dynamics = ctrl.step(u, ref_is_error=False, is_velocity=True)
+            # m.all_forces.append(dynamics[0])
+            # m.all_torques.append(dynamics[1:])
             speeds = m.allocate_control(dynamics[0], dynamics[1:4]) # see if the inverse works with small eps
-            speeds *= fault_mult # maybe do tha in the alocate control function
+            if t > 5:
+                print("Has fault")
+                speeds *= fault_mult # maybe do tha in the alocate control function
             speeds = np.clip(speeds, a_min=0, a_max=max_rads) 
+            forces, torques = m.get_forces_torques(speeds, x.astype(m.dtype))
+            m.all_forces.append(forces)
+            m.all_torques.append(torques)
             dxdt = m.dxdt_speeds(t, x.astype(m.dtype), speeds,
                 disturb_forces=disturbance_fn(m))
             m.speeds = speeds
@@ -256,6 +264,10 @@ class MultirotorTrajEnv(SystemEnv):
         self.injected = False
         self.has_turbulence = False
 
+        self.wind_forces = []
+        self.vehicle.all_forces = []
+        self.vehicle.all_torques = []
+
     @property
     def state(self) -> np.ndarray:
         if self.ekf:
@@ -264,6 +276,26 @@ class MultirotorTrajEnv(SystemEnv):
             x = self.x
         return self.normalize_state(x)
     
+    # def random_wind(self, m):
+    #     if self.random_cardinal_wind: # if cardinal winds
+    #         if self.direction_rand > 0.75: # N
+    #             self.wind_x = 0
+    #             self.wind_y = np.abs(self.wind_y)
+    #         elif self.direction_rand > 0.5: # S
+    #             self.wind_x = 0
+    #             self.wind_y = -np.abs(self.wind_y)
+    #         elif self.direction_rand > 0.25: # E
+    #             self.wind_x = np.abs(self.wind_x)
+    #             self.wind_y = 0
+    #         else: # W
+    #             self.wind_x = -np.abs(self.wind_x)
+    #             self.wind_y = 0
+        
+    #     drag = 0.2418 # drag coefficient for the UAV
+    #     signs = np.sign([self.wind_x, self.wind_y, self.wind_z])
+    #     newtons = drag * np.square([self.wind_x, self.wind_y, self.wind_z]) * signs
+    #     return newtons
+
     def random_wind(self, m):
         if self.random_cardinal_wind: # if cardinal winds
             if self.direction_rand > 0.75: # N
@@ -279,9 +311,21 @@ class MultirotorTrajEnv(SystemEnv):
                 self.wind_x = -np.abs(self.wind_x)
                 self.wind_y = 0
         
-        drag = 0.2418 # drag coefficient for the UAV
-        signs = np.sign([self.wind_x, self.wind_y, self.wind_z])
-        newtons = drag * np.square([self.wind_x, self.wind_y, self.wind_z]) * signs
+        rho = 1.2
+        cd = 1
+        Axy, Axz, Ayz = 0.403, 0.403, 0.403
+        const = -0.5 * rho * cd
+
+        # Make sure this wind vector can change
+        wind_vector = np.array([self.wind_x, self.wind_y, self.wind_z], dtype=np.float32)
+        dcm = direction_cosine_matrix(m.orientation[0], m.orientation[1], m.orientation[2])
+        v_wb = inertial_to_body(wind_vector, dcm)
+
+        Vb = m.velocity
+        v_a = v_wb + Vb
+        newtons = const * np.array([Ayz * v_a[0]*np.abs(v_a[0]), Axz * v_a[1]*np.abs(v_a[1]), Axy * v_a[2]*np.abs(v_a[2])]) # this is being applied twice
+        self.wind_forces.append(newtons)
+        # return np.zeros(3, np.float32)
         return newtons
 
     def normalize_state(self, state):
@@ -341,6 +385,8 @@ class MultirotorTrajEnv(SystemEnv):
 
         # Manually set underlying vehicle's state
         self.vehicle.state = self.x
+        print(self.vehicle.speeds)
+        self.vehicle.speeds = np.array([363.52]*8, dtype=np.float32)
 
         if self.has_turbulence:
             self.get_turbulence(self.prev_waypt, self.next_waypt)
@@ -399,9 +445,9 @@ class MultirotorTrajEnv(SystemEnv):
             self.x[12:15] = self.vehicle.position[:3] - intersection_point
             
             self.vehicle.state = self.x
-            self.vehicle.t = self.t
+            self.vehicle.t = self.t 
 
-            self.vehicle.state += self.generate_noise_vector()
+            self.vehicle.state += self.generate_noise_vector() 
 
             if self.has_turbulence:
                 self.update_wind_with_turbulence(intersection_point, self.prev_waypt, self.next_waypt)

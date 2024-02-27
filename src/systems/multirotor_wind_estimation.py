@@ -173,7 +173,6 @@ def create_multirotor(
             # speeds *= fault_mult # maybe do tha in the alocate control function
             speeds = np.clip(speeds, a_min=0, a_max=max_rads) 
             # speeds[3] *= 0.9
-            print(speeds)
             dxdt = m.dxdt_speeds(t, x.astype(m.dtype), speeds,
                 disturb_forces=disturbance_fn(m))
             m.speeds = speeds

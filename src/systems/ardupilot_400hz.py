@@ -360,105 +360,140 @@ class MultirotorTrajEnv(SystemEnv):
 
 
     # Make this like the speedsmultirotor env step
-    def step(self, u: np.ndarray, **kwargs):
-        reward = 0
-        for t in range(1): # usually self.steps_u, now we want it to happen every time
-            self.total_t += 1
-            if self.has_injection: # dealing with injecting wind mid-flight, have do so some hacky logic because this is a gym env inside a gym env
-                if self.total_t >= self.injection_end and self.injected:
-                    self.wind_x = self.tmp_wind_x
-                    self.wind_y = self.tmp_wind_y
-                    self.wind_z = self.tmp_wind_z
+    # def step(self, u: np.ndarray, **kwargs):
+    #     reward = 0
+    #     for t in range(1): # usually self.steps_u, now we want it to happen every time
+    #         self.total_t += 1
+    #         if self.has_injection: # dealing with injecting wind mid-flight, have do so some hacky logic because this is a gym env inside a gym env
+    #             if self.total_t >= self.injection_end and self.injected:
+    #                 self.wind_x = self.tmp_wind_x
+    #                 self.wind_y = self.tmp_wind_y
+    #                 self.wind_z = self.tmp_wind_z
                     
-                if self.total_t >= self.injection_start and not self.injected:
-                    self.injected = True
-                    self.tmp_wind_x = self.wind_x
-                    self.tmp_wind_y = self.wind_y
-                    self.tmp_wind_z = self.wind_z
+    #             if self.total_t >= self.injection_start and not self.injected:
+    #                 self.injected = True
+    #                 self.tmp_wind_x = self.wind_x
+    #                 self.tmp_wind_y = self.wind_y
+    #                 self.tmp_wind_z = self.wind_z
                     
-                    self.wind_x = self.injected_wind[0]
-                    self.wind_y = self.injected_wind[1]
-                    self.wind_z = self.injected_wind[2]
+    #                 self.wind_x = self.injected_wind[0]
+    #                 self.wind_y = self.injected_wind[1]
+    #                 self.wind_z = self.injected_wind[2]
             
             
-            prev_v = self.vehicle.position[:3] - self.prev_waypt
-            # print("v", prev_v)
-            # Calculate the scalar factor
-            prev_scalar_factor = np.dot(prev_v, self._des_unit_vec) / (np.dot(self._des_unit_vec, self._des_unit_vec)+1e-8)
-            # print("sc", prev_scalar_factor)
+    #         prev_v = self.vehicle.position[:3] - self.prev_waypt
+    #         # print("v", prev_v)
+    #         # Calculate the scalar factor
+    #         prev_scalar_factor = np.dot(prev_v, self._des_unit_vec) / (np.dot(self._des_unit_vec, self._des_unit_vec)+1e-8)
+    #         # print("sc", prev_scalar_factor)
 
-            # Calculate the intersection point coordinates
-            self.prev_intersection_point = self.prev_waypt + prev_scalar_factor * self._des_unit_vec
-            # x, r, d, *_, i = super().step(np.concatenate(([self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=self.window_distance),u])))
-            # print(u)
+    #         # Calculate the intersection point coordinates
+    #         self.prev_intersection_point = self.prev_waypt + prev_scalar_factor * self._des_unit_vec
+    #         # x, r, d, *_, i = super().step(np.concatenate(([self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=self.window_distance),u])))
+    #         # print(u)
             
 
-            # print("Before", self.vehicle.state)
+    #         # print("Before", self.vehicle.state)
 
-            x, r, d, *_, i = super().step(u)
+    #         x, r, d, *_, i = super().step(u)
 
-            # print("After", self.vehicle.state)
-
-            
-            dist = np.linalg.norm(self.next_waypt - self.x[:3])
-            reached = dist <= self._proximity 
-            current_v = self.vehicle.position[:3] - self.prev_waypt
-            cross_v = np.cross(current_v, self._des_unit_vec)
-            normal_distance = np.linalg.norm(cross_v) # because it is norm 1
-            
-            # Calculate the scalar factor
-            scalar_factor = np.dot(current_v, self._des_unit_vec) / (np.dot(self._des_unit_vec, self._des_unit_vec)+1e-8)
-
-            # Calculate the intersection point coordinates
-            intersection_point = self.prev_waypt + scalar_factor * self._des_unit_vec
-            
-            self.x[12:15] = self.vehicle.position[:3] - intersection_point
-            
-            # print("Before", self.vehicle.state)
-            self.vehicle.state = self.x
-
-            if self.vehicle.state[2] <= 0 + 1e-6:
-                self.vehicle.state[5] = max(0, self.vehicle.state[5])
-            self.vehicle.state[2] = max(0, self.vehicle.state[2])
-
-            # print("After", self.vehicle.state)
-            self.vehicle.t = self.t
-
-            # self.vehicle.state += self.generate_noise_vector()
-
-            if self.has_turbulence:
-                self.update_wind_with_turbulence(intersection_point, self.prev_waypt, self.next_waypt)
-
-            outofbounds = normal_distance > self.safety_radius 
-            
-            reward -= normal_distance / 5
-            
-            outoftime = self.t >= self.period
-            tipped = np.any(np.abs(self.x[6:9]) > self._max_angle * 8)
+    #         # print("After", self.vehicle.state)
 
             
-            # crashed = self.vehicle.position[2] <= 0
-            crashed = False
-            done = outoftime or reached or tipped or crashed
+    #         dist = np.linalg.norm(self.next_waypt - self.x[:3])
+    #         reached = dist <= self._proximity 
+    #         current_v = self.vehicle.position[:3] - self.prev_waypt
+    #         cross_v = np.cross(current_v, self._des_unit_vec)
+    #         normal_distance = np.linalg.norm(cross_v) # because it is norm 1
+            
+    #         # Calculate the scalar factor
+    #         scalar_factor = np.dot(current_v, self._des_unit_vec) / (np.dot(self._des_unit_vec, self._des_unit_vec)+1e-8)
 
-            if done:
-                i.update(dict(reached=reached, outofbounds=outofbounds, outoftime=outoftime, tipped=tipped, crashed=crashed))
-                break
+    #         # Calculate the intersection point coordinates
+    #         intersection_point = self.prev_waypt + scalar_factor * self._des_unit_vec
+            
+    #         self.x[12:15] = self.vehicle.position[:3] - intersection_point
+            
+    #         # print("Before", self.vehicle.state)
+    #         self.vehicle.state = self.x
 
-            if (t+1) % 40 == 0: # TODO: udpate this wind mod
-                current_lstm_input = np.concatenate([self.x[:3] - self.prev_pos,self.x[3:9]])
-                current_lstm_input = self.normalize_lstm_input(current_lstm_input)
-                self.lstm_input.append(current_lstm_input)
-                self.lstm_input.pop(0)
+    #         if self.vehicle.state[2] <= 0 + 1e-6:
+    #             self.vehicle.state[5] = max(0, self.vehicle.state[5])
+    #         self.vehicle.state[2] = max(0, self.vehicle.state[2])
 
-                self.prev_pos = self.x[:3]
+    #         # print("After", self.vehicle.state)
+    #         self.vehicle.t = self.t
+
+    #         # self.vehicle.state += self.generate_noise_vector()
+
+    #         if self.has_turbulence:
+    #             self.update_wind_with_turbulence(intersection_point, self.prev_waypt, self.next_waypt)
+
+    #         outofbounds = normal_distance > self.safety_radius 
+            
+    #         reward -= normal_distance / 5
+            
+    #         outoftime = self.t >= self.period
+    #         tipped = np.any(np.abs(self.x[6:9]) > self._max_angle * 8)
+
+            
+    #         # crashed = self.vehicle.position[2] <= 0
+    #         crashed = False
+    #         done = outoftime or reached or tipped or crashed
+
+    #         if done:
+    #             i.update(dict(reached=reached, outofbounds=outofbounds, outoftime=outoftime, tipped=tipped, crashed=crashed))
+    #             break
+
+    #         if (t+1) % 40 == 0: # TODO: udpate this wind mod
+    #             current_lstm_input = np.concatenate([self.x[:3] - self.prev_pos,self.x[3:9]])
+    #             current_lstm_input = self.normalize_lstm_input(current_lstm_input)
+    #             self.lstm_input.append(current_lstm_input)
+    #             self.lstm_input.pop(0)
+
+    #             self.prev_pos = self.x[:3]
         
-        lstm_input_tensor = torch.Tensor(np.array(self.lstm_input)).reshape(1,10,9).to("cuda")
-        wind_estimation = self.lstm(lstm_input_tensor)
-        wind_estimation = wind_estimation.cpu().detach().numpy()[0]
+    #     lstm_input_tensor = torch.Tensor(np.array(self.lstm_input)).reshape(1,10,9).to("cuda")
+    #     wind_estimation = self.lstm(lstm_input_tensor)
+    #     wind_estimation = wind_estimation.cpu().detach().numpy()[0]
 
-        observed_state = np.concatenate([self.next_waypt - self.x[:3], self.x[3:15], wind_estimation[0:2]], dtype=np.float32)
-        return self.normalize_state(observed_state), reward, done, *_, i
+    #     observed_state = np.concatenate([self.next_waypt - self.x[:3], self.x[3:15], wind_estimation[0:2]], dtype=np.float32)
+    #     return self.normalize_state(observed_state), reward, done, *_, i
+    
+    def step(
+        self, action: np.ndarray, disturb_forces: np.ndarray=0.,
+        disturb_torques: np.ndarray=0.
+    ):
+        """
+        Step environment by providing speed signal.
+
+        Parameters
+        ----------
+        action : np.ndarray
+            An array of speed signals.
+        disturb_forces : np.ndarray, optional
+            Disturbinng x,y,z forces in the velicle's local frame, by default 0.
+        disturb_torques : np.ndarray, optional
+            Disturbing x,y,z torques in the vehicle's local frame, by default 0.
+
+        Returns
+        -------
+        Tuple[np.ndarray, float, bool, dict]
+            The state and other environment variables.
+        """
+        state = self.state
+        nstate = self.vehicle.step_speeds(
+            u=action,
+            disturb_forces=disturb_forces,
+            disturb_torques=disturb_torques
+        )
+        # if self.vehicle.state[2] <= 0:
+        #     self.vehicle.state[2:12] = np.zeros(10)
+        if self.vehicle.state[2] <= 0:
+            self.vehicle.state[5] = max(0, self.vehicle.state[5])
+        self.vehicle.state[2] = max(0, self.vehicle.state[2])
+        reward = self.reward(state, action, self.state)
+        return self.vehicle.state, reward, self._done, {}
 
     def ctrl_fn(self, x):
         return np.zeros(3, self.dtype)

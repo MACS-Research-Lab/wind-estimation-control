@@ -1,4 +1,4 @@
-name: supervisor-control
+name: wind-estimation
 channels:
   - conda-forge
 dependencies:

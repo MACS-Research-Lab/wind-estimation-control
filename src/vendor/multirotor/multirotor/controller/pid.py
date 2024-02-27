@@ -156,10 +156,11 @@ class PIDController:
         #     self.err_i + trapezoid((self.err, err), dx=dt, axis=0),
         #     a_min=-self.max_err_i, a_max=self.max_err_i
         # )
-        err_i = self.err_i + self.k_i * (err + self.err) * 0.5 * dt
+        err_i = self.err_i + self.k_i * err * dt
         err_i = np.clip(err_i, a_min=-self.max_err_i, a_max=self.max_err_i)
         err_d = self.k_d * (err - self.err) / dt
         action = err_p + err_i + err_d
+        
         if persist:
             self.err_p, self.err_i, self.err_d, self.action = \
                 err_p, err_i, err_d, action
@@ -375,14 +376,20 @@ class RateController(PIDController):
 
     def step(self, reference, measurement, dt, persist: bool=True):
         # desired angular velocity
-        ref = euler_to_angular_rate(reference, self.vehicle.orientation)
+        # ref = euler_to_angular_rate(reference, self.vehicle.orientation)
         # ref = reference
         # actual change in angular velocity
-        mea = euler_to_angular_rate(measurement, self.vehicle.orientation)
+        # mea = euler_to_angular_rate(measurement, self.vehicle.orientation)
         # mea = measurement
         # prescribed change in velocity i.e. angular acc
+        self.max_acceleration = 100
+        # self.action = np.clip(
+        #     super().step(reference=ref, measurement=mea, dt=dt, persist=persist),
+        #     -self.max_acceleration, self.max_acceleration
+        # )
+        
         self.action = np.clip(
-            super().step(reference=ref, measurement=mea, dt=dt, persist=persist),
+            super().step(reference=reference, measurement=measurement, dt=dt, persist=persist),
             -self.max_acceleration, self.max_acceleration
         )
         # torque = moment of inertia . angular_acceleration
@@ -447,10 +454,11 @@ class AltRateController(PIDController):
             # change in velocity i.e. acceleration
             ctrl = super().step(reference=reference, measurement=measurement, dt=dt, persist=persist)
             # convert acceleration to required z-force, given orientation
-            action = self.vehicle.params.mass * (
-                    ctrl / (np.cos(roll) * np.cos(pitch))
-                ) + \
-                self.vehicle.weight
+            # action = self.vehicle.params.mass * (
+            #         ctrl / (np.cos(roll) * np.cos(pitch))
+            #     ) + \
+            #     self.vehicle.weight
+            action = ctrl + self.vehicle.weight
             if persist:
                 self.action = action
             return action # thrust force
@@ -683,11 +691,27 @@ class Controller:
                 if feed_forward_velocity is not None:
                     self._ref_vel = (self.feedforward_weight * feed_forward_velocity[:2]) + (1 - self.feedforward_weight) * self._pid_vel   
 
+            # # Limits the norm of the reference velocities to the max velocity
+            # if self.n % self.steps_z == 0 or self.n % self.steps_p == 0:
+            #     # dcm = direction_cosine_matrix(*self.vehicle.orientation)
+            #     # dcm = np.array(dcm, dtype=np.float64)
+            #     ref_vels = np.array([self._ref_vel[0], self._ref_vel[1], ref_vel_z[0]], dtype=np.float64)
+            #     # body_ref_vel = inertial_to_body(ref_vels, dcm)
+            #     # ref_vels = body_ref_vel.copy()
+            #     size_ref = np.linalg.norm(ref_vels)
+            #     if size_ref > self.ctrl_p.max_velocity:
+            #         ref_vels = (ref_vels / size_ref) * self.ctrl_p.max_velocity
+
+            #     self._ref_vel[0:2] = ref_vels[0:2]
+
+            #     # inertial_ref_vel = body_to_inertial(ref_vels, dcm)
+            #     ref_vel_z[0] = ref_vels[2]
+            
             # Limits the norm of the reference velocities to the max velocity
             if self.n % self.steps_z == 0 or self.n % self.steps_p == 0:
                 # dcm = direction_cosine_matrix(*self.vehicle.orientation)
                 # dcm = np.array(dcm, dtype=np.float64)
-                ref_vels = np.array([self._ref_vel[0], self._ref_vel[1], ref_vel_z[0]], dtype=np.float64)
+                ref_vels = np.array([self._ref_vel[0], self._ref_vel[1]], dtype=np.float64)
                 # body_ref_vel = inertial_to_body(ref_vels, dcm)
                 # ref_vels = body_ref_vel.copy()
                 size_ref = np.linalg.norm(ref_vels)
@@ -697,7 +721,7 @@ class Controller:
                 self._ref_vel[0:2] = ref_vels[0:2]
 
                 # inertial_ref_vel = body_to_inertial(ref_vels, dcm)
-                ref_vel_z[0] = ref_vels[2]
+                ref_vel_z[0] = np.clip(ref_vel_z[0], -self.ctrl_z.max_velocity, self.ctrl_z.max_velocity)
 
             if self.n % self.steps_z == 0:
                 self.thrust = self.ctrl_vz.step(ref_vel_z, self.vehicle.inertial_velocity[2:], dt=dt, persist=persist)

@@ -216,7 +216,6 @@ def control_allocation_matrix(params: VehicleParams) -> Tuple[np.ndarray, np.nda
         The allocation matrix and its inverse. If no inverse exists, returns
         the Moore-Penrose Pseudo-inverse.
     """
-    print(params.angles)
     alloc = np.zeros((4, len(params.propellers))) #[Fz, Mx, My, Mz] x n-Propellers
     x = params.distances * np.cos(params.angles)
     y = params.distances * np.sin(params.angles)

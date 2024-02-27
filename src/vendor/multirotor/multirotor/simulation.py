@@ -202,9 +202,14 @@ class Motor:
         self.current = np.clip((self.voltage - self.speed * self.params.k_emf) / self.params.resistance, 0, self.params.max_current)
         torque = self.params.k_torque * self.current
         # Subtract drag torque and dynamic friction from electrical torque
+        rpm_speeds = (60 / (2*np.pi)) * self.speed
+        new_torque = 2.138 * (1**-8) * (rpm_speeds**2) + -1.279 * (1**-5) * rpm_speeds
         net_torque = torque - \
                      self.params.k_df * self.speed - \
                      self.params.k_drag * self.speed**2
+        # net_torque = torque - \
+        #              self.params.k_df * self.speed - \
+        #              new_torque
         accs = (self._last_angular_acc, net_torque / self.params.moment_of_inertia)
         self.speed += \
         trapezoid(
