@@ -3,6 +3,7 @@ from typing import Iterable, Tuple
 import numpy as np
 from numba import njit
 from scipy.optimize import fsolve
+from multirotor.coords import body_to_inertial, direction_cosine_matrix
 
 
 
@@ -132,6 +133,10 @@ def _apply_forces_torques(
     np.ndarray
         The rate of change of state d(state)/dt
     """
+    # dcm = direction_cosine_matrix(x[6], x[7], x[8])
+    # dcm = dcm.astype(np.float32)
+    # forces = forces.astype(np.float32)
+    # forces = body_to_inertial(forces, dcm)
     # Store state variables in a readable format
     xI = x[0]       # Inertial frame positions
     yI = x[1]

@@ -389,6 +389,54 @@ class Multirotor:
             p.step(s, max_voltage=self.battery.voltage)
 
 
+    # def get_forces_torques(self, speeds: np.ndarray, state: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    #     """
+    #     Calculate the forces and torques acting on the vehicle's center of gravity
+    #     given its current state and speed of propellers.
+
+    #     Parameters
+    #     ----------
+    #     speeds : np.ndarray
+    #         Propeller speeds (rad/s)
+    #     state : np.ndarray
+    #         State of the vehicle (position, velocity, orientation, angular rate)
+
+    #     Returns
+    #     -------
+    #     Tuple[np.ndarray, np.ndarray]
+    #         The forces and torques acting on the body.
+    #     """
+    #     linear_vel_body = state[:3]
+    #     angular_vel_body = state[3:6]
+    #     airstream_velocity_inertial = rotating_frame_derivative(
+    #         self.params.propeller_vectors,
+    #         linear_vel_body,
+    #         angular_vel_body)
+
+    #     thrust_vec = np.zeros((3, len(self.propellers)), dtype=self.dtype)
+    #     torque_vec = np.zeros_like(thrust_vec)
+
+    #     for i, (speed, prop, clockwise) in enumerate(zip(
+    #             speeds,
+    #             self.propellers,
+    #             self.params.clockwise)
+    #     ):
+    #         last_speed = prop.speed
+    #         speed = prop.apply_speed(speed, max_voltage=self.battery.voltage)
+    #         angular_acc = (speed - last_speed) / self.simulation.dt
+    #         thrust_vec[2, i] = prop.thrust(
+    #             speed, airstream_velocity_inertial[:, i]
+    #         )
+    #         torque_vec[:, i] = torque(
+    #             self.params.propeller_vectors[:,i], thrust_vec[:,i],
+    #             prop.params.moment_of_inertia, angular_acc,
+    #             prop.params.k_drag, speed,
+    #             clockwise
+    #         )
+    #     forces = thrust_vec.sum(axis=1)
+    #     torques = torque_vec.sum(axis=1)
+    #     return forces, torques
+    
     def get_forces_torques(self, speeds: np.ndarray, state: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculate the forces and torques acting on the vehicle's center of gravity
@@ -406,36 +454,29 @@ class Multirotor:
         Tuple[np.ndarray, np.ndarray]
             The forces and torques acting on the body.
         """
-        linear_vel_body = state[:3]
-        angular_vel_body = state[3:6]
-        airstream_velocity_inertial = rotating_frame_derivative(
-            self.params.propeller_vectors,
-            linear_vel_body,
-            angular_vel_body)
+        l = 0.635
+        b=9.8419e-05
+        T = b*(speeds**2)
 
-        thrust_vec = np.zeros((3, len(self.propellers)), dtype=self.dtype)
-        torque_vec = np.zeros_like(thrust_vec)
+        T_total=np.sum(T)
 
-        for i, (speed, prop, clockwise) in enumerate(zip(
-                speeds,
-                self.propellers,
-                self.params.clockwise)
-        ):
-            last_speed = prop.speed
-            speed = prop.apply_speed(speed, max_voltage=self.battery.voltage)
-            angular_acc = (speed - last_speed) / self.simulation.dt
-            thrust_vec[2, i] = prop.thrust(
-                speed, airstream_velocity_inertial[:, i]
-            )
-            torque_vec[:, i] = torque(
-                self.params.propeller_vectors[:,i], thrust_vec[:,i],
-                prop.params.moment_of_inertia, angular_acc,
-                prop.params.k_drag, speed,
-                clockwise
-            )
-        forces = thrust_vec.sum(axis=1)
-        torques = torque_vec.sum(axis=1)
-        return forces, torques
+        Ftot_b=[0, 0, T_total]
+        Fx=Ftot_b[0]
+        Fy=Ftot_b[1]
+        Fz=Ftot_b[2]
+
+        d=1.8503e-06; 
+        M = d*(speeds**2)
+        
+        angsm=np.cos(np.pi/8) 
+        anglg=np.cos(3*np.pi/8)
+
+        Mx=l*(-T[0]*anglg -T[1]*angsm +T[2]*angsm +T[3]*anglg +T[4]*anglg+T[5]*angsm -T[6]*angsm -T[7]*anglg)
+
+        My=l*(-T[0]*angsm -T[1]*anglg -T[2]*anglg -T[3]*angsm +T[4]*angsm+T[5]*anglg +T[6]*anglg +T[7]*angsm)
+
+        Mz= M[0] -M[1] +M[2] -M[3] +M[4] -M[5] +M[6] -M[7]
+        return np.array([Fx, Fy, Fz], dtype=np.float32).squeeze(), np.array([Mx, My, Mz], dtype=np.float32)
 
 
     def dxdt_dynamics(self, t: float, x: np.ndarray, u: np.ndarray, params=None):
@@ -596,12 +637,41 @@ class Multirotor:
         np.ndarray
             The prescribed propeller speeds (rad /s)
         """
-        # TODO: njit it? np.linalg.lstsq can be compiled
-        vec = np.asarray([thrust, *torques], self.dtype)
-        # return np.sqrt(np.linalg.lstsq(self.alloc, vec, rcond=None)[0])
-        return np.sqrt(
-            np.clip(self.alloc_inverse @ vec, a_min=0., a_max=None)
-        )
+        # TODO: I think this is also correct, but the motors directions need to be fixed
+        # # # TODO: njit it? np.linalg.lstsq can be compiled
+        # vec = np.asarray([thrust, *torques], self.dtype)
+        # # return np.sqrt(np.linalg.lstsq(self.alloc, vec, rcond=None)[0])
+        # return np.sqrt(
+        #     np.clip(self.alloc_inverse @ vec, a_min=0., a_max=None)
+        # )
+        
+        l=0.635
+        b=9.8419e-05
+        d=1.8503e-06
+
+        angsm = np.cos(np.pi/8)
+        anglg = np.cos(3*np.pi/8)
+        
+        A_f = np.array([[b, b, b, b, b, b, b, b],
+                       [-b*l*anglg, -b*l*angsm, b*l*angsm, b*l*anglg, b*l*anglg, b*l*angsm, -b*l*angsm, -b*l*anglg],
+                       [-b*l*angsm, -b*l*anglg, -b*l*anglg, -b*l*angsm, b*l*angsm, b*l*anglg, b*l*anglg, b*l*angsm],
+                       [d, -d, d, -d, d, -d, d, -d]], dtype=np.float32)
+        
+        u_des = np.array([thrust, torques[0], torques[1], torques[2]], dtype=np.float32)
+        
+        a = np.linalg.pinv(A_f)
+        Omega_s = np.linalg.pinv(A_f) @ np.expand_dims(u_des, 1)
+        
+        wref = np.zeros(8)
+        for i in range(len(Omega_s)):
+            if Omega_s[i] < 0:
+                wref[i] = 0
+            elif Omega_s[i] > 670**2:
+                wref[i] = 670
+            else:
+                wref[i] = np.sqrt(Omega_s[i])
+        
+        return np.round(wref, 1)
 
 
     def nonlinear_dynamics_controls_system(
