@@ -152,12 +152,12 @@ class PIDController:
         else:
             err = reference - measurement
         err_p = self.k_p * err
-        # err_i = self.k_i * np.clip(
-        #     self.err_i + trapezoid((self.err, err), dx=dt, axis=0),
-        #     a_min=-self.max_err_i, a_max=self.max_err_i
-        # )
-        err_i = self.err_i + self.k_i * err * dt
-        err_i = np.clip(err_i, a_min=-self.max_err_i, a_max=self.max_err_i)
+        err_i = self.k_i * np.clip(
+            self.err_i + trapezoid((self.err, err), dx=dt, axis=0),
+            a_min=-self.max_err_i, a_max=self.max_err_i
+        )
+        # err_i = self.err_i + self.k_i * err * dt
+        # err_i = np.clip(err_i, a_min=-self.max_err_i, a_max=self.max_err_i)
         err_d = self.k_d * (err - self.err) / dt
         action = err_p + err_i + err_d
         
@@ -376,22 +376,22 @@ class RateController(PIDController):
 
     def step(self, reference, measurement, dt, persist: bool=True):
         # desired angular velocity
-        # ref = euler_to_angular_rate(reference, self.vehicle.orientation)
-        # ref = reference
+        ref = euler_to_angular_rate(reference, self.vehicle.orientation)
+        ref = reference
         # actual change in angular velocity
-        # mea = euler_to_angular_rate(measurement, self.vehicle.orientation)
-        # mea = measurement
+        mea = euler_to_angular_rate(measurement, self.vehicle.orientation)
+        mea = measurement
         # prescribed change in velocity i.e. angular acc
         self.max_acceleration = 100
-        # self.action = np.clip(
-        #     super().step(reference=ref, measurement=mea, dt=dt, persist=persist),
-        #     -self.max_acceleration, self.max_acceleration
-        # )
-        
         self.action = np.clip(
-            super().step(reference=reference, measurement=measurement, dt=dt, persist=persist),
+            super().step(reference=ref, measurement=mea, dt=dt, persist=persist),
             -self.max_acceleration, self.max_acceleration
         )
+        
+        # self.action = np.clip(
+        #     super().step(reference=reference, measurement=measurement, dt=dt, persist=persist),
+        #     -self.max_acceleration, self.max_acceleration
+        # )
         # torque = moment of inertia . angular_acceleration
         action = self.vehicle.params.inertia_matrix.dot(self.action)
         if persist:
@@ -454,11 +454,11 @@ class AltRateController(PIDController):
             # change in velocity i.e. acceleration
             ctrl = super().step(reference=reference, measurement=measurement, dt=dt, persist=persist)
             # convert acceleration to required z-force, given orientation
-            # action = self.vehicle.params.mass * (
-            #         ctrl / (np.cos(roll) * np.cos(pitch))
-            #     ) + \
-            #     self.vehicle.weight
-            action = ctrl + self.vehicle.weight
+            action = self.vehicle.params.mass * (
+                    ctrl / (np.cos(roll) * np.cos(pitch))
+                ) + \
+                self.vehicle.weight
+            # action = ctrl + self.vehicle.weight
             if persist:
                 self.action = action
             return action # thrust force

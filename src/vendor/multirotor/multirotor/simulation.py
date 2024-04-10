@@ -2,7 +2,7 @@ from typing import Callable, List, Tuple
 from copy import deepcopy
 
 import numpy as np
-from scipy.integrate import odeint, trapezoid
+from scipy.integrate import odeint, trapezoid, solve_ivp
 
 from .vehicle import MotorParams, PropellerParams, SimulationParams, VehicleParams, BatteryParams
 from .coords import body_to_inertial, direction_cosine_matrix, rotating_frame_derivative, angular_to_euler_rate
@@ -437,7 +437,7 @@ class Multirotor:
     #     torques = torque_vec.sum(axis=1)
     #     return forces, torques
     
-    def get_forces_torques(self, speeds: np.ndarray, state: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def get_forces_torques(self, speeds: np.ndarray, state: np.ndarray):
         """
         Calculate the forces and torques acting on the vehicle's center of gravity
         given its current state and speed of propellers.
@@ -455,15 +455,42 @@ class Multirotor:
             The forces and torques acting on the body.
         """
         l = 0.635
+        
         b=9.8419e-05
         T = b*(speeds**2)
 
         T_total=np.sum(T)
 
-        Ftot_b=[0, 0, T_total]
-        Fx=Ftot_b[0]
-        Fy=Ftot_b[1]
-        Fz=Ftot_b[2]
+        #### Start new block
+
+        Phi = state[6]
+        The = state[7]
+        Psi = state[8]
+
+        g=9.80
+        m_t=10.66
+        l=0.635
+
+        R_b_e = np.array([[np.cos(Psi)*np.cos(The), np.cos(Psi)*np.sin(The)*np.sin(Phi)-np.sin(Psi)*np.cos(Phi), np.cos(Psi)*np.sin(The)*np.cos(Phi)+np.sin(Psi)*np.sin(Phi)],
+                  [np.sin(Psi)*np.cos(The), np.sin(Psi)*np.sin(The)*np.sin(Phi)+np.cos(Psi)*np.cos(Phi), np.sin(Psi)*np.sin(The)*np.cos(Phi)-np.cos(Psi)*np.sin(Phi)],
+                  [-np.sin(The), np.cos(The)*np.sin(Phi), np.cos(The)*np.cos(Phi)]])
+
+        # Computing Ftot_b
+        Ftot_b = np.dot(R_b_e.T, np.array([[0], [0], [-m_t*g]])) + np.array([[0], [0], [T_total]])
+
+        # Rounding to one decimal place
+        Ftot_b = np.round(Ftot_b*10) / 10
+
+        # Extracting components Fx, Fy, Fz
+        Fx, Fy, Fz = Ftot_b.flatten()
+
+
+        ### end new block
+
+        # Ftot_b=[0, 0, T_total]
+        # Fx=Ftot_b[0]
+        # Fy=Ftot_b[1]
+        # Fz=Ftot_b[2]
 
         d=1.8503e-06; 
         M = d*(speeds**2)
@@ -476,6 +503,10 @@ class Multirotor:
         My=l*(-T[0]*angsm -T[1]*anglg -T[2]*anglg -T[3]*angsm +T[4]*angsm+T[5]*anglg +T[6]*anglg +T[7]*angsm)
 
         Mz= M[0] -M[1] +M[2] -M[3] +M[4] -M[5] +M[6] -M[7]
+
+        Mx = np.round(Mx*10) / 10
+        My = np.round(My*10) / 10
+        Mz = np.round(Mz*10) / 10
         return np.array([Fx, Fy, Fz], dtype=np.float32).squeeze(), np.array([Mx, My, Mz], dtype=np.float32)
 
 
@@ -607,16 +638,18 @@ class Multirotor:
             disturb_forces=disturb_forces, disturb_torques=disturb_torques
         )
         # print('pre-x', self.t // self.simulation.dt, self.state.dtype)
-        self.state = odeint(
-            self.dxdt_speeds, self.state, (0, self.simulation.dt),
+        # state = solve_ivp(dxdt_speeds, (0, 0.01), state, args=(f, t), method='RK45', t_eval=(0, 0.01), rtol=1e-12, atol=1e-12).y[:,-1]
+        self.state = solve_ivp(
+            self.dxdt_speeds, t_span=(0, 0.01), y0=self.state, t_eval=(0, self.simulation.dt),
             args=(u, disturb_forces, disturb_torques),
-            rtol=1e-4, atol=1e-4, tfirst=True
-        )[-1]
-        self.state = np.around(self.state, 4).astype(self.dtype)
+            rtol=1e-8, atol=1e-8, method='RK45'
+        ).y[:,-1]
+        # self.state = np.around(self.state, 4).astype(self.dtype)
+        self.state = self.state.astype(self.dtype)
         # print('post-x', self.t // self.simulation.dt, self.state.dtype)
-        for u_, prop in zip(u, self.propellers):
-            prop.step(u_, max_voltage=self.battery.voltage)
-        self.battery.step()
+        # for u_, prop in zip(u, self.propellers):
+        #     prop.step(u_, max_voltage=self.battery.voltage)
+        # self.battery.step()
         return self.state
 
 
@@ -644,7 +677,6 @@ class Multirotor:
         # return np.sqrt(
         #     np.clip(self.alloc_inverse @ vec, a_min=0., a_max=None)
         # )
-        
         l=0.635
         b=9.8419e-05
         d=1.8503e-06

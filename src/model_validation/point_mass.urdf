@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot name="point_mass">
+  <link name="mass">
+    <inertial>
+      <mass value="10.66"/>  <!-- Set the desired mass -->
+      <inertia ixx="0.2506" ixy="0" ixz="0" iyy="0.2506" iyz="0" izz="0.4538"/>  <!-- Set the desired inertia matrix -->
+    </inertial>
+    <visual>
+      <geometry>
+        <sphere radius="0.05"/>  <!-- Set a small radius for visualization -->
+      </geometry>
+    </visual>
+  </link>
+</robot>

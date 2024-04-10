@@ -3,7 +3,7 @@ from typing import Literal, Callable, Type, Union, Iterable
 from argparse import Namespace
 
 from copy import deepcopy
-from multirotor.coords import direction_cosine_matrix, inertial_to_body
+from multirotor.coords import direction_cosine_matrix, inertial_to_body, body_to_inertial
 import numpy as np
 from stable_baselines3.ppo import PPO
 import control
@@ -17,7 +17,7 @@ from multirotor.controller import (
     AltController, AltRateController,
     PosController, AttController,
     VelController, RateController,
-    Controller
+    Controller, PIDController
 )
 
 from systems.dryden_python_implementation import Wind_Model
@@ -78,7 +78,7 @@ VP = VehicleParams(
 # VP.propellers[0].k_thrust = 0
 # VP.propellers[0].k_drag = 0
 # SP = SimulationParams(dt=0.01, g=9.81, dtype=np.float32)
-SP = SimulationParams(dt=0.01, g=9.81, dtype=np.float32)
+SP = SimulationParams(dt=0.01, g=0*9.81, dtype=np.float32)
 
 
 
@@ -264,6 +264,8 @@ class MultirotorTrajEnv(SystemEnv):
         self.wind_z = np.random.uniform(self.wind_ranges[2][0], self.wind_ranges[2][1])
         self.disturbance_fn = self.random_wind
         self.noise_correlation = np.zeros(6)
+        self.pos_pid = PIDController(k_p=[0.3,0.3,0.2], k_i=0, k_d=0, max_err_i=0)
+        self.vel_pid = PIDController(k_p=[1, 1, 100], k_i=[0.01, 0.01, 0], k_d=0, max_err_i=15)
         super().__init__(system=system, q=q, r=r, dt=sp.dt, seed=seed, dtype=sp.dtype)
 
         self.observation_space = gym.spaces.Box(
@@ -306,7 +308,8 @@ class MultirotorTrajEnv(SystemEnv):
             x = np.asarray(self.ekf.x, self.dtype)
         else:
             x = self.x
-        return self.normalize_state(x)
+        # return self.normalize_state(x)
+        return x
 
     def random_wind(self, m):
         if self.random_cardinal_wind: # if cardinal winds
@@ -338,8 +341,8 @@ class MultirotorTrajEnv(SystemEnv):
         v_a = v_wb + Vb
         newtons = const * np.array([Ayz * v_a[0]*np.abs(v_a[0]), Axz * v_a[1]*np.abs(v_a[1]), Axy * v_a[2]*np.abs(v_a[2])]) 
         self.wind_forces.append(newtons)
-        return np.zeros(3, np.float32)
-        # return newtons
+        # return np.zeros(3, np.float32)
+        return newtons
 
     def normalize_state(self, state):
         return state * 2 / (self.state_range+1e-6)
@@ -548,22 +551,34 @@ class MultirotorTrajEnv(SystemEnv):
             # Calculate the intersection point coordinates
             prev_intersection_point = self.prev_waypt + prev_scalar_factor * self._des_unit_vec
             # x, r, d, *_, i = super().step(np.concatenate(([self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=self.window_distance),u])))
-            dynamics = self.ctrl.step(np.concatenate(([self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=self.window_distance),u])), ref_is_error=False, is_velocity=True)
+            
+            # dynamics = self.ctrl.step(np.concatenate(([self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=self.window_distance),u])), ref_is_error=False, is_velocity=True)
+            
             # m.all_forces.append(dynamics[0])
             # m.all_torques.append(dynamics[1:])
-            speeds = self.vehicle.allocate_control(dynamics[0], dynamics[1:4]) # see if the inverse works with small eps
-            # if t > 5:
-            #     print("Has fault")
-            #     speeds *= fault_mult 
 
-            fault_mult = np.array([0,1,1,1,1,1,1,1])
-            speeds *= fault_mult
+
+            # speeds = self.vehicle.allocate_control(dynamics[0], dynamics[1:4]) # see if the inverse works with small eps
+            speeds = self.cascade_pid(self.next_waypt, self.vehicle.inertial_velocity, self.vehicle.position, self.vehicle.orientation, self.vehicle.angular_rate, self.pos_pid, self.vel_pid)
+            
+            if self.t > 5:
+                print("Has fault")
+                fault_mult = np.array([1,1,1,1,1,1,1,1])
+                speeds *= fault_mult 
+
+                # self.vehicle.propellers[0].k_thrust = 0
+                # self.vehicle.propellers[0].k_drag = 0
+
+                # print(self.vehicle.propellers[0].k_thrust)
+
+            # speeds *= fault_mult
             speeds = np.clip(speeds, a_min=0, a_max=670) 
+            self.vehicle.speeds = speeds
             x, r, d, *_, i = self.step_spd(speeds, self.random_wind(self.vehicle))
             self.x = x
             
-            self.x[15] = self.wind_x + np.random.normal(0, 0.5)
-            self.x[16] = self.wind_y + np.random.normal(0, 0.5)
+            # self.x[15] = self.wind_x + np.random.normal(0, 0.5)
+            # self.x[16] = self.wind_y + np.random.normal(0, 0.5)
             
             dist = np.linalg.norm(self.next_waypt - self.x[:3])
             reached = dist <= self._proximity 
@@ -577,9 +592,9 @@ class MultirotorTrajEnv(SystemEnv):
             # Calculate the intersection point coordinates
             intersection_point = self.prev_waypt + scalar_factor * self._des_unit_vec
             
-            self.x[12:15] = self.vehicle.position[:3] - intersection_point
+            # self.x[12:15] = self.vehicle.position[:3] - intersection_point
             
-            self.vehicle.state = self.x
+            self.vehicle.state = self.x[0:12]
             self.vehicle.t = self.t 
 
             # self.vehicle.state += self.generate_noise_vector() 
@@ -603,8 +618,29 @@ class MultirotorTrajEnv(SystemEnv):
                 i.update(dict(reached=reached, outofbounds=outofbounds, outoftime=outoftime, tipped=tipped, crashed=crashed))
                 break
 
-        observed_state = np.concatenate([self.next_waypt - self.x[:3], self.x[3:17]], dtype=np.float32)
-        return self.normalize_state(observed_state), reward, done, *_, i
+        # observed_state = np.concatenate([self.next_waypt - self.x[:3], self.x[3:17]], dtype=np.float32)
+        # return self.normalize_state(observed_state), reward, done, *_, i
+        return self.x, reward, done, *_, i
+
+
+    def cascade_pid(self, ref_pos, vel, pos, eul, rate, pos_pid, vel_pid):
+        max_vel = 15 # make a parameter
+
+        inert_ref_vel = pos_controller(ref_pos, pos, pos_pid)
+        inert_ref_vel = np.clip(inert_ref_vel, -max_vel, max_vel)
+        inert_ref_vel_leashed = vel_leash(inert_ref_vel, eul, max_vel)
+        ref_vel = np.array([inert_ref_vel_leashed[0], inert_ref_vel_leashed[1], inert_ref_vel[2]])
+
+        angle_ref = vel_controller(ref_vel, vel, vel_pid)
+        
+        zforce_ref = angle_ref[2]
+
+        theta_phi_ref = angle_ref[[1,0]] # swap roll and pitch
+        rate_ref = angle_controller(theta_phi_ref, eul)
+
+        torque_ref = rate_controller(rate_ref, rate)
+
+        return self.vehicle.allocate_control(zforce_ref, torque_ref)
 
     def ctrl_fn(self, x):
         return np.zeros(3, self.dtype)
@@ -672,3 +708,42 @@ class MultirotorTrajEnv(SystemEnv):
         self.wind_x = self.turbulent_wind[index][0]
         self.wind_y = self.turbulent_wind[index][1]
         self.wind_z = self.turbulent_wind[index][2]
+
+def pos_controller(ref_pos, pos, pos_pid: PIDController):
+    ref_vel = pos_pid.step(ref_pos, pos, dt=0.01)
+    return ref_vel
+
+def vel_leash(ref_vel, eul, max_vel):
+    The = eul[1]
+    Phi = eul[0]
+    Psi = eul[2]
+    R_b_e = np.array([[np.cos(Psi)*np.cos(The), np.cos(Psi)*np.sin(The)*np.sin(Phi)-np.sin(Psi)*np.cos(Phi), np.cos(Psi)*np.sin(The)*np.cos(Phi)+np.sin(Psi)*np.sin(Phi)],
+                  [np.sin(Psi)*np.cos(The), np.sin(Psi)*np.sin(The)*np.sin(Phi)+np.cos(Psi)*np.cos(Phi), np.sin(Psi)*np.sin(The)*np.cos(Phi)-np.cos(Psi)*np.sin(Phi)],
+                  [-np.sin(The), np.cos(The)*np.sin(Phi), np.cos(The)*np.cos(Phi)]])
+    
+    velbody = R_b_e.T @ ref_vel
+    velbody = velbody[0:2]
+
+    norm = np.linalg.norm(velbody)
+    if norm > max_vel:
+        velbody = velbody * (max_vel / norm)
+
+    velinert = np.linalg.pinv(R_b_e.T) @ np.array([velbody[0], velbody[1], 0])
+
+    return velinert
+
+def vel_controller(ref_vel, vel, vel_pid: PIDController):
+    angle_ref = vel_pid.step(ref_vel, vel, dt=0.01)
+    angle_ref[0:2] = np.clip(angle_ref[0:2], -22.5*np.pi/180, 22.5*np.pi/180) # TODO: degrees and radians mixed
+    angle_ref[1] *= -1
+    angle_ref[2] += 9.8*10.66
+    return angle_ref
+
+def angle_controller(theta_phi_ref, eul):
+    angle_ref = np.array([theta_phi_ref[0], theta_phi_ref[1], 0])
+    err = angle_ref - eul
+    return err * 5
+
+def rate_controller(rate_ref, rate):
+    err = rate_ref - rate
+    return err * 8
