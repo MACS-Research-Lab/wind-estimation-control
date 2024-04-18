@@ -28,7 +28,7 @@ DEFAULTS = Namespace(
     safety_radius = 5,
     max_velocity = 15,
     max_acceleration = 2.5,
-    max_tilt = np.pi / 12,
+    max_tilt = (22.5*np.pi) / 180,
     max_rads = 700
 )
 

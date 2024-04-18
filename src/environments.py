@@ -23,12 +23,13 @@ from systems.ardupilot_wind import MultirotorTrajEnv as ArduPilotBaseEnv
 from systems.long_ardupilot import LongTrajEnv as ArduPilotLongEnv
 from systems.ardupilot_400hz import MultirotorTrajEnv as ArduPilotBase400Env
 from systems.long_ardupilot_400hz import LongTrajEnv as ArduPilotLong400Env
+from systems.default_env import MultirotorTrajEnv as DefaultEnv
 
 
 def setup_base_params(wind_ranges, **kwargs):
      kw = dict(
         safety_radius=kwargs['safety_radius'],
-        vp=VP,get_controller_fn=kwargs['get_controller_fn'],
+        vp=VP,#get_controller_fn=kwargs['get_controller_fn'],
         steps_u=kwargs['steps_u'],
         scaling_factor=kwargs['scaling_factor'],
         wind_ranges=wind_ranges,
@@ -49,7 +50,8 @@ class OctorotorEnvSelector():
             "dji_sliding": (DJIBaseSliding, DJILongSliding),
             "dji_lstm": (LSTMDJIBaseEnv, LSTMDJILongEnv),
             "ardupilot": (ArduPilotBaseEnv, ArduPilotLongEnv),
-            "ardupilot_400hz": (ArduPilotBase400Env, ArduPilotLong400Env)
+            "ardupilot_400hz": (ArduPilotBase400Env, ArduPilotLong400Env),
+            "default": (DefaultEnv, SlidingLongEnv)
         }
     
     def get_env(self, env_name: str, params: dict, wind_range: list, waypts: np.ndarray, start_alt: int = 0, has_turbulence: bool = False):
@@ -60,7 +62,7 @@ class OctorotorEnvSelector():
         env_kwargs = dict(
             safety_radius=5, 
             seed=0,
-            get_controller_fn=lambda m: get_established_controller(m, leash=leash),
+            # get_controller_fn=lambda m: get_established_controller(m, leash=leash),
             vp = VP,
         )
 

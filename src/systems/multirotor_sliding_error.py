@@ -32,15 +32,12 @@ DEFAULTS = Namespace(
     max_rads = 670
 )
 
-fault_mult: np.ndarray = np.array([0,1,1,1,1,1,1,1])
-
 BP = BatteryParams(max_voltage=22.2)
 MP = MotorParams(
     moment_of_inertia=5e-5,
     resistance=0.27,
-    # resistance=0.081,
     k_emf=0.0265,
-    k_motor=0.0932,
+    k_motor=0.0932, 
     speed_voltage_scaling=0.0347,
     max_current=38.
 )
@@ -48,9 +45,7 @@ PP = PropellerParams(
     moment_of_inertia=1.86e-6,
     use_thrust_constant=True,
     k_thrust=9.8419e-05, # 18-inch propeller
-    # k_thrust=5.28847e-05, # 15 inch propeller
     k_drag=1.8503e-06, # 18-inch propeller
-    # k_drag=1.34545e-06, # 15-inch propeller
     motor=MP
     # motor=None
 )
@@ -64,176 +59,39 @@ VP = VehicleParams(
     distances=np.ones(8) * 0.635,
     clockwise=[-1,1,-1,1,-1,1,-1,1],
     mass=10.66,
-    # inertia_matrix=np.asarray([
-    #     [0.2206, 0, 0],
-    #     [0, 0.2206, 0.],
-    #     [0, 0, 0.4238]
-    # ])
     inertia_matrix=np.asarray([
         [0.2506, 0, 0],
         [0, 0.2506, 0.],
         [0, 0, 0.4538]
     ])
 )
-# VP.propellers[0].k_thrust = 0
-# VP.propellers[0].k_drag = 0
-# SP = SimulationParams(dt=0.01, g=9.81, dtype=np.float32)
 SP = SimulationParams(dt=0.01, g=0*9.81, dtype=np.float32)
-
-
-
-
-def get_controller(
-        m: Multirotor, max_velocity=DEFAULTS.max_velocity,
-        max_acceleration=DEFAULTS.max_acceleration,
-        max_tilt=DEFAULTS.max_tilt,
-        leash=False
-    ) -> Controller:
-    assert m.simulation.dt <= 0.1, 'Simulation time step too large.'
-    pos = PosController(
-        1.0, 0., 0.,
-        max_err_i=DEFAULTS.max_velocity, vehicle=m,
-        max_velocity=max_velocity,
-        max_acceleration=max_acceleration  ,
-        square_root_scaling=False,
-        leashing=leash  
-    )
-    vel = VelController(
-        2.0, 1.0, 0.5,
-        max_err_i=DEFAULTS.max_acceleration, vehicle=m, max_tilt=max_tilt)
-    att = AttController(
-        [2.6875, 4.5, 4.5],
-        0, 0.,
-        max_err_i=1., vehicle=m)
-    rat = RateController(
-        [4., 4., 4.],
-        0, 0, # purely P control
-        # [0.1655, 0.1655, 0.5],
-        # [0.135, 0.135, 0.018],
-        # [0.01234, 0.01234, 0.],
-        max_err_i=0.5,
-        vehicle=m)
-
-    alt = AltController(
-        1, 0, 0,
-        max_err_i=1, vehicle=m, max_velocity=max_velocity)
-    alt_rate = AltRateController(
-        10, 0, 0,
-        max_err_i=1, vehicle=m)
-    ctrl = Controller(
-        pos, vel, att, rat, alt, alt_rate,
-        period_p=0.1, period_a=0.01, period_z=0.1
-    )
-    return ctrl
-
-
 
 def create_multirotor(
     vp=VP, sp=SP, name='multirotor', xformA=np.eye(12), xformB=np.eye(4),
     return_mult_ctrl=False,
     kind: Literal['speeds', 'dynamics', 'waypoints']='dynamics',
     max_rads: float=DEFAULTS.max_rads,
-    get_controller_fn: Callable[[Multirotor], Controller]=get_controller,
     disturbance_fn: Callable[[Multirotor], np.ndarray]=lambda _: np.zeros(3, SP.dtype),
     multirotor_class: Type[Multirotor]=Multirotor,
     multirotor_kwargs: dict={}
 ):
     m = multirotor_class(vp, sp, **multirotor_kwargs)
-    ctrl = get_controller_fn(m)
 
-    if kind=='dynamics':
-        inputs=['fz','tx','ty','tz']
-        # NOTE: This is not a pure function due to setting m.speeds
-        def update_fn(t, x, u, params):
-            speeds = m.allocate_control(u[0], u[1:4])
-            speeds = np.clip(speeds, a_min=0, a_max=max_rads)
-            dxdt = m.dxdt_speeds(t, x.astype(m.dtype), speeds,
-            disturb_forces=disturbance_fn(m))
-            m.speeds = speeds
-            return dxdt
-    elif kind=='speeds':
-        inputs = [('w%02d' % n) for n in range(len(m.propellers))]
-        def update_fn(t, x, u, params):
-            # speeds = np.clip(u, a_min=0, a_max=max_rads)
-            # m.step_speeds(speeds, disturb_forces=disturbance_fn(m))
-            # # here, waypoint supervision can be added
-            # old_dynamics = ctrl.action
-            # new_dynamics = ctrl.step(np.zeros(4, m.dtype), ref_is_error=False)
-            # return (new_dynamics - old_dynamics) / m.simulation.dt
-            return None # integration of dynamics is done directly in MultirotorAllocEnv.step()
-    # NOTE: This is not a pure function due to setting m.speeds
-    elif kind=='waypoints':
-        inputs=['x','y','z','yaw']
-        def update_fn(t, x, u, params):
-            dynamics = ctrl.step(u, ref_is_error=False)
-            speeds = m.allocate_control(dynamics[0], dynamics[1:4])
-            speeds = np.clip(speeds, a_min=0, a_max=max_rads)
-            dxdt = m.dxdt_speeds(t, x.astype(m.dtype), speeds,
-                disturb_forces=disturbance_fn(m))
-            m.speeds = speeds
-            return dxdt
-    elif kind=='velocities':
-        inputs=['vx','vy','vz']
-        def update_fn(t, x, u, params):
-            dynamics = ctrl.step(u, ref_is_error=False, is_velocity=True)
-            # m.all_forces.append(dynamics[0])
-            # m.all_torques.append(dynamics[1:])
-            speeds = m.allocate_control(dynamics[0], dynamics[1:4]) # see if the inverse works with small eps
-            if t > 5:
-                print("Has fault")
-                speeds *= fault_mult 
-
-            # speeds *= fault_mult 
-            speeds = np.clip(speeds, a_min=0, a_max=max_rads) 
-            forces, torques = m.get_forces_torques(speeds, x.astype(m.dtype))
-            m.all_forces.append(forces)
-            m.all_torques.append(torques)
-            dxdt = m.dxdt_speeds(t, x.astype(m.dtype), speeds,
-                disturb_forces=disturbance_fn(m))
-            m.all_dxdt.append(dxdt)
-            # m.speeds = speeds
-            return dxdt
-    # elif kind=='velocities':
-    #     inputs=['vx','vy','vz']
-    #     def update_fn(t, x, u, params):
-    #         dynamics = ctrl.step(u, ref_is_error=False, is_velocity=True)
-    #         # m.all_forces.append(dynamics[0])
-    #         # m.all_torques.append(dynamics[1:])
-    #         speeds = m.allocate_control(dynamics[0], dynamics[1:4]) # see if the inverse works with small eps
-    #         # if t > 5:
-    #         #     print("Has fault")
-    #         #     speeds *= fault_mult # maybe do tha in the alocate control function
-    #         # speeds *= fault_mult # maybe do tha in the alocate control function
-    #         speeds = np.clip(speeds, a_min=0, a_max=max_rads) 
-    #         forces, torques = m.get_forces_torques(speeds, x.astype(m.dtype))
-    #         m.all_forces.append(forces)
-    #         m.all_torques.append(torques)
-    #         next_state = m.step_speeds(speeds, disturb_forces=disturbance_fn(m))
-    #         # m.speeds = speeds
-    #         return next_state
-
-    sys = control.NonlinearIOSystem(
-        updfcn=update_fn,
-        inputs=inputs,
-        states=['x','y','z',
-                'vx','vy','vz',
-                'roll','pitch','yaw',
-                'xrate', 'yrate', 'zrate']
-    )
+    sys = None
     if return_mult_ctrl:
-        return sys, dict(multirotor=m, ctrl=ctrl)
+        return sys, dict(multirotor=m)
     return sys
 
 
 
 class MultirotorTrajEnv(SystemEnv):
 
+    def get_controller():
+        return None
 
     def __init__(
         self, vp=VP, sp=SP,
-        q=np.diagflat([1,1,1,0.25,0.25,0.25,0.5,0.5,0.5,0.1,0.1,0.1,1,1,1,1,1,1,1,1,1]),
-        r = np.diagflat([1,1,1,0]) * 1e-4,
-        dt=None, seed=None,
         xformA=np.eye(12), xformB=np.eye(4),
         get_controller_fn: Callable[[Multirotor], Controller]=get_controller,
         disturbance_fn: Callable[[Multirotor], np.ndarray]=lambda m: np.zeros(3, np.float32),
@@ -257,7 +115,6 @@ class MultirotorTrajEnv(SystemEnv):
             multirotor_kwargs=multirotor_kwargs
         )
         self.vehicle: Multirotor = extra['multirotor']
-        self.ctrl: Controller = extra['ctrl']
         self.wind_ranges = wind_ranges
         self.wind_x = np.random.uniform(self.wind_ranges[0][0], self.wind_ranges[0][1])
         self.wind_y = np.random.uniform(self.wind_ranges[1][0], self.wind_ranges[1][1])
@@ -266,7 +123,6 @@ class MultirotorTrajEnv(SystemEnv):
         self.noise_correlation = np.zeros(6)
         self.pos_pid = PIDController(k_p=[0.3,0.3,0.2], k_i=0, k_d=0, max_err_i=0)
         self.vel_pid = PIDController(k_p=[1, 1, 100], k_i=[0.01, 0.01, 0], k_d=0, max_err_i=15)
-        super().__init__(system=system, q=q, r=r, dt=sp.dt, seed=seed, dtype=sp.dtype)
 
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
@@ -341,7 +197,7 @@ class MultirotorTrajEnv(SystemEnv):
         v_a = v_wb + Vb
         newtons = const * np.array([Ayz * v_a[0]*np.abs(v_a[0]), Axz * v_a[1]*np.abs(v_a[1]), Axy * v_a[2]*np.abs(v_a[2])]) 
         self.wind_forces.append(newtons)
-        # return np.zeros(3, np.float32)
+        
         return newtons
 
     def normalize_state(self, state):
@@ -572,12 +428,8 @@ class MultirotorTrajEnv(SystemEnv):
     def generate_noise_vector(self):
         noise_vector = np.zeros_like(self.vehicle.state)
 
-        # noise_vector[0] = np.random.normal(0, 0.0167) # x
-        # noise_vector[1] = np.random.normal(0, 0.0167) # y
-        # noise_vector[2] = np.random.normal(0, 0.0167/2) # z
         noise_vector[3] = np.random.normal(0, 0.0167/10) # vx
         noise_vector[4] = np.random.normal(0, 0.0167/10) # vy
-        # noise_vector[5] = np.random.normal(0, 0.0167/100) # vz
         noise_vector[5] = 0
 
         w = 0.001
@@ -620,6 +472,7 @@ class MultirotorTrajEnv(SystemEnv):
         else:
             time, locs, turbulent_wind = wind_model.get_wind_vector_waypoint(start_wp=prev_waypt, end_wp=curr_waypt, veh_speed=1, turbulence=7.7, base_wind_vec=wind_vec)
         self.turbulent_wind = turbulent_wind
+
 
     def update_wind_with_turbulence(self, intersection_point, prev_waypt, next_waypt):
         waypt_vec = next_waypt - prev_waypt
