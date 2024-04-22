@@ -130,22 +130,22 @@ class LongBlendingEnv:
         
 
 # Various useful functions for this project
-from scripts.opt_multirotorenv import get_study
-from rl import load_agent
+# from opt_multirotorenv import get_study
+# from rl import load_agent
 
 # Where the saved agent is stored during HPO
-def get_agent(name, agent_num=None):
-    log_root_path = './tensorboard/MultirotorTrajEnv/optstudy/%s/'
-    study = get_study(name)
+# def get_agent(name, agent_num=None):
+#     log_root_path = './tensorboard/MultirotorTrajEnv/optstudy/%s/'
+#     # study = get_study(name)
     
-    if agent_num is not None:
-        best_trial = agent_num
-    else:
-        best_trial = study.best_trial.number        
+#     if agent_num is not None:
+#         best_trial = agent_num
+#     else:
+#         best_trial = study.best_trial.number        
         
-    best_agent = load_agent((log_root_path + '%03d/run_1/agent') % (name, best_trial)) 
-    best_params = study.best_params
-    return study, best_agent, best_params
+#     best_agent = load_agent((log_root_path + '%03d/run_1/agent') % (name, best_trial)) 
+#     best_params = study.best_params
+#     return study, best_agent, best_params
 
 
 def softmax(x):

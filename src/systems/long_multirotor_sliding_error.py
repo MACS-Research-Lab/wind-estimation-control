@@ -62,6 +62,8 @@ class LongTrajEnv:
         # self.base_env.next_waypt = self.initial_waypoints[self.real_waypt_idx]
         self.base_env.vehicle.position[2] = self.start_alt
 
+        self.base_env.vel_pid.reset()
+        
         return self.base_env.state
 
 

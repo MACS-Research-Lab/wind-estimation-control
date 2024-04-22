@@ -642,7 +642,7 @@ class Multirotor:
         self.state = solve_ivp(
             self.dxdt_speeds, t_span=(0, 0.01), y0=self.state, t_eval=(0, self.simulation.dt),
             args=(u, disturb_forces, disturb_torques),
-            rtol=1e-8, atol=1e-8, method='RK45'
+            rtol=1e-6, atol=1e-6, method='RK45'
         ).y[:,-1]
         # self.state = np.around(self.state, 4).astype(self.dtype)
         self.state = self.state.astype(self.dtype)

@@ -19,6 +19,8 @@ from multirotor.controller import (
     VelController, RateController,
     Controller, PIDController
 )
+from matlab_control import *
+from parameters import pid_params
 
 from systems.dryden_python_implementation import Wind_Model
 
@@ -102,7 +104,8 @@ class MultirotorTrajEnv(SystemEnv):
         random_disturbance_direction=False,
         proximity=0.65,
         multirotor_class=Multirotor, multirotor_kwargs={},
-        seed=0
+        seed=0,
+        pid_parameters: pid_params = None 
     ):
         
         system, extra = create_multirotor(
@@ -123,8 +126,8 @@ class MultirotorTrajEnv(SystemEnv):
         self.wind_z = np.random.uniform(self.wind_ranges[2][0], self.wind_ranges[2][1])
         self.disturbance_fn = self.random_wind
         self.noise_correlation = np.zeros(6)
-        self.pos_pid = PIDController(k_p=[0.3,0.3,0.2], k_i=0, k_d=0, max_err_i=0)
-        self.vel_pid = PIDController(k_p=[1, 1, 100], k_i=[0.01, 0.01, 0], k_d=0, max_err_i=15)
+        self.pos_pid = PIDController(k_p=pid_parameters.pos_p, k_i=pid_parameters.pos_i, k_d=pid_parameters.pos_d, max_err_i=0)
+        self.vel_pid = PIDController(k_p=pid_parameters.vel_p, k_i=pid_parameters.vel_i, k_d=pid_parameters.vel_d, max_err_i=15)
 
         self.observation_space = gym.spaces.Box(
             low=-1, high=1,
@@ -163,6 +166,7 @@ class MultirotorTrajEnv(SystemEnv):
         self.max_velocity = DEFAULTS.max_velocity
 
         self.max_tilt = (22.5*np.pi) / 180
+        self.pid_parameters = pid_parameters
 
     
 
@@ -202,8 +206,10 @@ class MultirotorTrajEnv(SystemEnv):
         v_wb = inertial_to_body(wind_vector, dcm)
 
         Vb = m.velocity
-        v_a = v_wb + Vb
+        # v_a = v_wb + Vb
+        v_a = Vb - v_wb
         newtons = const * np.array([Ayz * v_a[0]*np.abs(v_a[0]), Axz * v_a[1]*np.abs(v_a[1]), Axy * v_a[2]*np.abs(v_a[2])]) 
+        # newtons = const * Axy * (np.square(v_a))
         self.wind_forces.append(newtons)
         
         return newtons
@@ -259,12 +265,12 @@ class MultirotorTrajEnv(SystemEnv):
         ori = np.asarray(uav_x[6:9])
         rat = np.asarray(uav_x[9:12]) 
         err_proj = np.asarray(uav_x[12:15]) 
-        wind = np.asarray(uav_x[15:17])
+        disturbance = np.asarray(uav_x[15:17])
 
-        self.x = np.concatenate((err_wp, vel, ori, rat, err_proj, wind), dtype=self.dtype) 
+        self.x = np.concatenate((err_wp, vel, ori, rat, err_proj, disturbance), dtype=self.dtype) 
 
         # Manually set underlying vehicle's state
-        self.vehicle.state = self.x
+        # self.vehicle.state = self.x #TODO: do I need this?
         self.vehicle.speeds = np.array([363.52]*8, dtype=np.float32) # initialize in hovering
 
         if self.has_turbulence:
@@ -317,7 +323,7 @@ class MultirotorTrajEnv(SystemEnv):
                     self.wind_x = self.tmp_wind_x
                     self.wind_y = self.tmp_wind_y
                     self.wind_z = self.tmp_wind_z
-                    
+
                 if self.total_t >= self.injection_start and not self.injected:
                     self.injected = True
                     self.tmp_wind_x = self.wind_x
@@ -384,7 +390,7 @@ class MultirotorTrajEnv(SystemEnv):
             self.vehicle.state = self.x[0:12]
             self.vehicle.t = self.t 
 
-            # self.vehicle.state += self.generate_noise_vector() 
+            self.vehicle.state += self.generate_noise_vector() 
 
             if self.has_turbulence:
                 self.update_wind_with_turbulence(intersection_point, self.prev_waypt, self.next_waypt)
@@ -395,7 +401,7 @@ class MultirotorTrajEnv(SystemEnv):
             
             outoftime = self.t >= self.period
             # tipped = np.any(np.abs(self.x[6:9]) > self._max_angle)
-            tipped = False
+            tipped = np.any(self.vehicle.velocity > 50)
             self.t += 0.01
             
             crashed = self.vehicle.position[2] <= 0
@@ -412,20 +418,23 @@ class MultirotorTrajEnv(SystemEnv):
 
     def cascade_pid(self, ref_pos, vel, pos, eul, rate, pos_pid, vel_pid):
         max_vel = self.max_velocity # make a parameter
+        if self.total_t % 2 - 1 == 0:
+            # Then we should get an update from the position and velocity controller
+            # otherwise, just use our previous angle reference
+            inert_ref_vel = pos_controller(ref_pos, pos, pos_pid)
+            inert_ref_vel = np.clip(inert_ref_vel, -max_vel, max_vel)
+            inert_ref_vel_leashed = vel_leash(inert_ref_vel, eul, max_vel)
+            ref_vel = np.array([inert_ref_vel_leashed[0], inert_ref_vel_leashed[1], inert_ref_vel[2]])
 
-        inert_ref_vel = pos_controller(ref_pos, pos, pos_pid)
-        inert_ref_vel = np.clip(inert_ref_vel, -max_vel, max_vel)
-        inert_ref_vel_leashed = vel_leash(inert_ref_vel, eul, max_vel)
-        ref_vel = np.array([inert_ref_vel_leashed[0], inert_ref_vel_leashed[1], inert_ref_vel[2]])
-
-        angle_ref = vel_controller(ref_vel, vel, vel_pid)
+            angle_ref = vel_controller(ref_vel, vel, vel_pid)
+            self.angle_ref = angle_ref
         
-        zforce_ref = angle_ref[2]
+        zforce_ref = self.angle_ref[2]
 
-        theta_phi_ref = angle_ref[[1,0]] # swap roll and pitch
-        rate_ref = angle_controller(theta_phi_ref, eul)
+        theta_phi_ref = self.angle_ref[[1,0]] # swap roll and pitch
+        rate_ref = angle_controller(theta_phi_ref, eul, self.pid_parameters.att_p)
 
-        torque_ref = rate_controller(rate_ref, rate)
+        torque_ref = rate_controller(rate_ref, rate, self.pid_parameters.rate_p)
 
         return self.vehicle.allocate_control(zforce_ref, torque_ref)
 
@@ -435,6 +444,11 @@ class MultirotorTrajEnv(SystemEnv):
     # should be added to self.vehicle.state
     def generate_noise_vector(self):
         noise_vector = np.zeros_like(self.vehicle.state)
+        
+        # noise_vector[0] = np.random.normal(0, 0.9)
+        # noise_vector[1] = np.random.normal(0, 0.9)
+        # noise_vector[2] = 0
+        
 
         noise_vector[3] = np.random.normal(0, 0.0167/10) # vx
         noise_vector[4] = np.random.normal(0, 0.0167/10) # vy
@@ -492,41 +506,3 @@ class MultirotorTrajEnv(SystemEnv):
         self.wind_y = self.turbulent_wind[index][1]
         self.wind_z = self.turbulent_wind[index][2]
 
-def pos_controller(ref_pos, pos, pos_pid: PIDController):
-    ref_vel = pos_pid.step(ref_pos, pos, dt=0.01)
-    return ref_vel
-
-def vel_leash(ref_vel, eul, max_vel):
-    The = eul[1]
-    Phi = eul[0]
-    Psi = eul[2]
-    R_b_e = np.array([[np.cos(Psi)*np.cos(The), np.cos(Psi)*np.sin(The)*np.sin(Phi)-np.sin(Psi)*np.cos(Phi), np.cos(Psi)*np.sin(The)*np.cos(Phi)+np.sin(Psi)*np.sin(Phi)],
-                  [np.sin(Psi)*np.cos(The), np.sin(Psi)*np.sin(The)*np.sin(Phi)+np.cos(Psi)*np.cos(Phi), np.sin(Psi)*np.sin(The)*np.cos(Phi)-np.cos(Psi)*np.sin(Phi)],
-                  [-np.sin(The), np.cos(The)*np.sin(Phi), np.cos(The)*np.cos(Phi)]])
-    
-    velbody = R_b_e.T @ ref_vel
-    velbody = velbody[0:2]
-
-    norm = np.linalg.norm(velbody)
-    if norm > max_vel:
-        velbody = velbody * (max_vel / norm)
-
-    velinert = np.linalg.pinv(R_b_e.T) @ np.array([velbody[0], velbody[1], 0])
-
-    return velinert
-
-def vel_controller(ref_vel, vel, vel_pid: PIDController):
-    angle_ref = vel_pid.step(ref_vel, vel, dt=0.01)
-    angle_ref[0:2] = np.clip(angle_ref[0:2], -22.5*np.pi/180, 22.5*np.pi/180) # TODO: degrees and radians mixed
-    angle_ref[1] *= -1
-    angle_ref[2] += 9.8*10.66
-    return angle_ref
-
-def angle_controller(theta_phi_ref, eul):
-    angle_ref = np.array([theta_phi_ref[0], theta_phi_ref[1], 0])
-    err = angle_ref - eul
-    return err * 5
-
-def rate_controller(rate_ref, rate):
-    err = rate_ref - rate
-    return err * 8

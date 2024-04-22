@@ -1,7 +1,7 @@
 # This contains common code for loading envs
 import numpy as np
 from multirotor.trajectories import Trajectory
-from scripts.opt_multirotorenv import get_established_controller
+# from opt_multirotorenv import get_established_controller
 from systems.multirotor import VP
 
 from systems.multirotor_sliding_error import MultirotorTrajEnv as SlidingBaseEnv
@@ -14,7 +14,7 @@ from systems.multirotor_naive import MultirotorTrajEnv as NaiveBaseEnv
 from systems.long_multirotor_oracle import LongTrajEnv as OracleLongEnv
 from systems.multirotor_oracle import MultirotorTrajEnv as OracleBaseEnv
 from systems.long_multirotor_wind_estimation import LongTrajEnv as LSTMLongEnv
-from systems.multirotor_wind_estimation import MultirotorTrajEnv as LSTMBaseEnv
+from systems.lstm_env import MultirotorTrajEnv as LSTMBaseEnv
 from systems.long_dji_sliding_error import LongTrajEnv as DJILongSliding
 from systems.dji_sliding_error import MultirotorTrajEnv as DJIBaseSliding
 from systems.long_dji_wind_estimation import LongTrajEnv as LSTMDJILongEnv
@@ -34,7 +34,8 @@ def setup_base_params(wind_ranges, **kwargs):
         scaling_factor=kwargs['scaling_factor'],
         wind_ranges=wind_ranges,
         proximity=5, # have to get within 5m of waypoint
-        seed=kwargs['seed'])
+        seed=kwargs['seed'],
+        pid_parameters=kwargs['pid_parameters'])
      
      return kw
  
@@ -62,12 +63,12 @@ class OctorotorEnvSelector():
         env_kwargs = dict(
             safety_radius=5, 
             seed=0,
-            # get_controller_fn=lambda m: get_established_controller(m, leash=leash),
             vp = VP,
         )
 
         env_kwargs['steps_u'] = params['steps_u']
         env_kwargs['scaling_factor'] = params['scaling_factor']
+        env_kwargs['pid_parameters'] = params['pid_parameters']
             
         base_params = setup_base_params(wind_range, **env_kwargs)
 

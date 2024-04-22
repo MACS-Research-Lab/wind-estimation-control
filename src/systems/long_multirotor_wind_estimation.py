@@ -3,6 +3,7 @@ from typing import Iterable
 import numpy as np
 
 from .multirotor import MultirotorTrajEnv
+from multirotor.trajectories import Trajectory
 
 
 
@@ -11,6 +12,11 @@ class LongTrajEnv:
     def __init__(self, waypoints: Iterable[np.ndarray], initial_waypoints: Iterable[np.ndarray], base_env: MultirotorTrajEnv, randomize_direction=False, always_modify_wind=False, random_cardinal_wind=False, injection_data = None, window_distance = 10, has_turbulence=False):
         self.waypoints = waypoints
         self.initial_waypoints = initial_waypoints
+        
+        self.randomize_waypoints = True
+        
+        
+        randomize_direction = False
 
         # Whether to randomly reverse the direction of following the trajectory
         if randomize_direction:
@@ -42,6 +48,13 @@ class LongTrajEnv:
 
 
     def reset(self):
+        if self.randomize_waypoints:
+            chosen_idx = np.random.choice(len(self.wp_options))
+            waypoints = self.wp_options[chosen_idx]
+            traj = Trajectory(None, points=waypoints, resolution=1000) 
+            wpts = traj.generate_trajectory(curr_pos=np.array([0,0,30]))
+            self.initial_waypoints = waypoints
+        
         self.current_waypoint_idx = 0
         self.real_waypt_idx = 0
         self.base_env.completed_distance = 0
@@ -56,6 +69,8 @@ class LongTrajEnv:
         # self.base_env.vehicle.position[2] = self.start_alt
 
         self.base_env.reset(uav_x=np.concatenate([np.zeros(17, np.float32)]), modify_wind=True)
+        self.base_env.pos_pid.reset()
+        self.base_env.vel_pid.reset()
         waypt_vec = self.waypoints[self.current_waypoint_idx+1] - np.array([0,0,self.start_alt]) # is this alt correct?
         self.base_env._des_unit_vec = waypt_vec / (np.linalg.norm(waypt_vec)+1e-6)
         
@@ -63,6 +78,26 @@ class LongTrajEnv:
         # self.base_env.prev_real_waypt = np.array([0,0,self.start_alt])
         # self.base_env.next_waypt = self.initial_waypoints[self.real_waypt_idx]
         self.base_env.vehicle.position[2] = self.start_alt
+        
+        self.base_env.fault_type = None
+        if self.base_env.fault_type == "random":
+            fault_idx = np.random.choice(8)
+            fault_idx = 0
+            self.base_env.fault_mult = np.ones(8)
+            fault_magnitude = np.random.uniform(0,1)
+            fault_magnitude = 0
+            
+            self.base_env.fault_mult[fault_idx] *= fault_magnitude
+            self.base_env.fault_t = np.random.uniform(0, 10)
+        elif self.base_env.fault_type == "fixed":
+            fault_idx = 1
+            self.base_env.fault_mult = np.ones(8)
+            fault_magnitude = 0
+            
+            self.base_env.fault_mult[fault_idx] *= fault_magnitude
+            self.base_env.fault_t = 5
+        else:
+            pass
 
         return self.base_env.state
 
@@ -81,6 +116,7 @@ class LongTrajEnv:
             # reward it if it was one of the original waypoints
             
             if self.real_waypt_idx < len(self.initial_waypoints) and np.linalg.norm(self.initial_waypoints[self.real_waypt_idx] - self.base_env.vehicle.position[:3]) < self.base_env._proximity:
+                # reward += 2500 # bonus for reaching one of the original waypoints
                 reward += 2500 # bonus for reaching one of the original waypoints
                 self.real_waypt_idx += 1 
                 if self.real_waypt_idx < len(self.initial_waypoints):

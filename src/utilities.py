@@ -1,5 +1,5 @@
 # Various useful functions for this project
-from scripts.opt_multirotorenv import apply_params, get_study, get_established_controller
+from opt_multirotorenv import apply_params, get_study, get_established_controller
 from rl import learn_rl, transform_rl_policy, evaluate_rl, PPO, load_agent
 
 # Where the saved agent is stored during HPO
