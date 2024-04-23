@@ -218,6 +218,7 @@ class MultirotorTrajEnv(SystemEnv):
         v_a = Vb - v_wb
         newtons = const * np.array([Ayz * v_a[0]*np.abs(v_a[0]), Axz * v_a[1]*np.abs(v_a[1]), Axy * v_a[2]*np.abs(v_a[2])]) 
         # newtons = const * Axy * ((v_a) ** 2)
+        self.disturbance = newtons
         
         self.wind_forces.append(newtons)
         
@@ -352,7 +353,7 @@ class MultirotorTrajEnv(SystemEnv):
             prev_intersection_point = self.prev_waypt + prev_scalar_factor * self._des_unit_vec
 
             if self.safety_leashing:
-                target_waypt = self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=10)
+                target_waypt = self.calculate_safe_sliding_bound(self.next_waypt, prev_intersection_point, distance=self.window_distance)
             else:
                 target_waypt = self.next_waypt
             
@@ -379,7 +380,7 @@ class MultirotorTrajEnv(SystemEnv):
             # Calculate the intersection point coordinates
             intersection_point = self.prev_waypt + scalar_factor * self._des_unit_vec
             
-            self.x[0:3] = dist
+            self.x[0:3] = self.next_waypt - self.vehicle.state[:3]
             self.x[3:12] = self.vehicle.state[3:12]
             self.x[12:15] = self.vehicle.position[:3] - intersection_point
             
@@ -405,17 +406,18 @@ class MultirotorTrajEnv(SystemEnv):
                 i.update(dict(reached=reached, outofbounds=outofbounds, outoftime=outoftime, tipped=tipped, crashed=crashed))
                 break
 
-            if (self.t+0.01) % 0.1 == 0: 
-                current_lstm_input = np.concatenate([self.x[:3] - self.prev_pos,self.x[3:9]])
+            if (self.total_t % 10) == 0: 
+                current_lstm_input = np.concatenate([-(self.x[:3] - self.prev_pos),self.x[3:9]])
                 current_lstm_input = self.normalize_lstm_input(current_lstm_input)
                 self.lstm_input.append(current_lstm_input)
                 self.lstm_input.pop(0)
-
-                self.prev_pos = self.x[:3]
-
-        lstm_input_tensor = torch.Tensor(np.array(self.lstm_input)).reshape(1,10,9).to(device)
+                
+                self.prev_pos = self.x[:3].copy()
+                
+        lstm_input_tensor = torch.Tensor(np.array(self.lstm_input)).unsqueeze(0).to(device)
         disturbance_estimation = self.lstm(lstm_input_tensor)
         disturbance_estimation = disturbance_estimation.cpu().detach().numpy()[0]
+        self.disturbance_pred = disturbance_estimation
 
         observed_state = np.concatenate([self.next_waypt - self.x[:3], self.x[3:15],  disturbance_estimation[0:2]], dtype=np.float32)
         return self.normalize_state(observed_state), reward, done, *_, i
@@ -428,7 +430,7 @@ class MultirotorTrajEnv(SystemEnv):
 
     def cascade_pid(self, ref_pos, vel, pos, eul, rate, pos_pid, vel_pid, action=np.array([0,0,0])):
         max_vel = self.max_velocity # make a parameter
-        if self.total_t % 2 - 1 == 0:
+        if self.total_t % 5 - 1 == 0:
             # Then we should get an update from the position and velocity controller
             # otherwise, just use our previous angle reference
             inert_ref_vel = pos_controller(ref_pos, pos, pos_pid)

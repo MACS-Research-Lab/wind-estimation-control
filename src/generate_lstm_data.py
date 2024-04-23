@@ -5,11 +5,13 @@ from tqdm import tqdm
 from environments import OctorotorEnvSelector
 from multirotor.helpers import DataLog
 from trajectories import square_100, circle_100
+from parameters import pid_params
 
 def run_trajectory(env_selector, wind_ranges, speed, trajectory):
     winds = []
-
-    params = {'steps_u':1, 'scaling_factor':0, 'window_distance':1000}
+    
+    pid_parameters = pid_params()
+    params = {'steps_u':1, 'scaling_factor':0, 'window_distance':1000, 'pid_parameters': pid_parameters}
     env = env_selector.get_env("default", params, wind_ranges, trajectory, start_alt=30, has_turbulence=True)
     
     env.base_env.max_velocity = speed
@@ -54,6 +56,7 @@ if __name__=="__main__":
     sim_params = {
         "trajectories": [square_100, circle_100],
         "winds": [0,1,2,3,4,5,6,7,8,9,10,11,12],
+        "speeds": [3, 5, 7, 9, 11, 13, 15]
     }
 
     saved_columns = ["X", "Y", "Z", "VX", "VY", "VZ", "Roll", "Pitch", "Yaw", "Rate Roll", "Rate Pitch", "Rate Yaw",
@@ -65,18 +68,19 @@ if __name__=="__main__":
 
     for traj in sim_params["trajectories"]:
         for wind in tqdm(sim_params["winds"]):
-            wind_range, vec = sample_wind_range(wind)
-            log, info, winds, disturbances = run_trajectory(env_selector, wind_range, 15, traj)
-            winds = np.array(winds)
-            disturbances = np.array(disturbances)
+            for vehicle_speed in sim_params['speeds']:
+                wind_range, vec = sample_wind_range(wind)
+                log, info, winds, disturbances = run_trajectory(env_selector, wind_range, vehicle_speed, traj)
+                winds = np.array(winds)
+                disturbances = np.array(disturbances)
 
 
-            flight_nums = [flight_no]*len(log.x)
-            result = np.vstack([log.x, log.y, log.z, log.velocity[:,0], log.velocity[:,1], log.velocity[:,2],
-                                log.roll, log.pitch, log.yaw, log.angular_rate[:,0], log.angular_rate[:,1], log.angular_rate[:,2],
-                                winds[:,0], winds[:,1], winds[:,2], disturbances[:,0], disturbances[:,1], disturbances[:,2], flight_nums]).T
-            flight_no += 1
+                flight_nums = [flight_no]*len(log.x)
+                result = np.vstack([log.x, log.y, log.z, log.velocity[:,0], log.velocity[:,1], log.velocity[:,2],
+                                    log.roll, log.pitch, log.yaw, log.angular_rate[:,0], log.angular_rate[:,1], log.angular_rate[:,2],
+                                    winds[:,0], winds[:,1], winds[:,2], disturbances[:,0], disturbances[:,1], disturbances[:,2], flight_nums]).T
+                flight_no += 1
 
-            data.extend(result.tolist())
+                data.extend(result.tolist())
 
-            save_data('lstm_disturbance.csv', data, saved_columns)
+                save_data('lstm_disturbance.csv', data, saved_columns)

@@ -418,7 +418,7 @@ class MultirotorTrajEnv(SystemEnv):
 
     def cascade_pid(self, ref_pos, vel, pos, eul, rate, pos_pid, vel_pid):
         max_vel = self.max_velocity # make a parameter
-        if self.total_t % 2 - 1 == 0:
+        if self.total_t % 5 - 1 == 0:
             # Then we should get an update from the position and velocity controller
             # otherwise, just use our previous angle reference
             inert_ref_vel = pos_controller(ref_pos, pos, pos_pid)

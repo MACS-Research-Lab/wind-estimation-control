@@ -33,7 +33,7 @@ def setup_base_params(wind_ranges, **kwargs):
         steps_u=kwargs['steps_u'],
         scaling_factor=kwargs['scaling_factor'],
         wind_ranges=wind_ranges,
-        proximity=5, # have to get within 5m of waypoint
+        proximity=2, # have to get within 5m of waypoint
         seed=kwargs['seed'],
         pid_parameters=kwargs['pid_parameters'])
      
@@ -61,7 +61,7 @@ class OctorotorEnvSelector():
         leash = env_name == "leashed"
             
         env_kwargs = dict(
-            safety_radius=5, 
+            safety_radius=2, 
             seed=0,
             vp = VP,
         )

@@ -117,7 +117,7 @@ class LongTrajEnv:
             
             if self.real_waypt_idx < len(self.initial_waypoints) and np.linalg.norm(self.initial_waypoints[self.real_waypt_idx] - self.base_env.vehicle.position[:3]) < self.base_env._proximity:
                 # reward += 2500 # bonus for reaching one of the original waypoints
-                reward += 2500 # bonus for reaching one of the original waypoints
+                reward += 500 # bonus for reaching one of the original waypoints
                 self.real_waypt_idx += 1 
                 if self.real_waypt_idx < len(self.initial_waypoints):
                     self.base_env.completed_distance += np.linalg.norm(self.base_env.prev_real_waypt - self.base_env.next_waypt)
@@ -140,7 +140,7 @@ class LongTrajEnv:
         if not done:
             if info.get('tipped') or info.get('outoftime') or info.get('crashed'):
                 done = True
-                reward -= 2500 # negative reward for not finishing (equivalent to 15 seconds outside the radius)
+                reward -= 5000 # negative reward for not finishing (equivalent to 15 seconds outside the radius)
 
         return s, reward, done, info
     

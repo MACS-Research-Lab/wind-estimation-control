@@ -99,14 +99,15 @@ def objective(trial: optuna.Trial):
     n_steps = trial.suggest_int('n_steps', 16, 12000, step=16) # what if we allow this to be much higher?
     # n_steps = 4000 // env_kwargs['steps_u'] # expect around 4000 when interacts every timestep
     batch_size = trial.suggest_int('batch_size', 32, 256, step=32)
-    total_timesteps = trial.suggest_categorical('total_timesteps', [50000, 100000, 200000])
+    total_timesteps = trial.suggest_categorical('total_timesteps', [50000, 100000])
+    
     
 
     wp_options = [square_100]
     env_selector = OctorotorEnvSelector()
     
-    pos_mult = 0.2
-    vel_mult = 0.2
+    pos_mult = 1
+    vel_mult = 1
     pid_parameters = pid_params(
         pos_p=[pos_mult*0.3, pos_mult*0.3, 0.2],
         vel_p=[vel_mult*1, vel_mult*1, 100],
@@ -126,7 +127,11 @@ def objective(trial: optuna.Trial):
     agent.save(f'./saved_models/lower_pid/{trial.number}')
     
     done = False
-    env = env_selector.get_env("lstm", best_params, [(0,0), (12,12), (0,0)], square_100, start_alt=30, has_turbulence=True)
+    env = env_selector.get_env("lstm", best_params, [(12,12), (0,0), (0,0)], square_100, start_alt=30, has_turbulence=True)
+    wp_options = [square_100]
+    env.wp_options = wp_options
+    env.base_env.fault_type=None
+    
     state = np.array(env.reset(), dtype=np.float32)
     rewards = []
     while not done:
@@ -135,7 +140,7 @@ def objective(trial: optuna.Trial):
         rewards.append(reward)
         state = np.array(state, dtype=np.float32)
 
-    return np.mean(rewards)
+    return np.sum(rewards)
 
 
 
