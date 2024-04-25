@@ -153,7 +153,7 @@ class MultirotorTrajEnv(SystemEnv):
         self.steps_u = steps_u
 
         # self.period = 150*2 #TODO: CHANGED THIS # seconds
-        self.period = 60 #TODO: CHANGED THIS # seconds
+        self.period = 180 #TODO: CHANGED THIS # seconds
         self._proximity = proximity
         self.always_modify_wind = False
         self.random_cardinal_wind = False
@@ -176,6 +176,7 @@ class MultirotorTrajEnv(SystemEnv):
 
         self.safety_leashing = True
         self.pid_parameters = pid_parameters
+        self.observed_state = np.zeros(17)
 
     
 
@@ -380,9 +381,9 @@ class MultirotorTrajEnv(SystemEnv):
             # Calculate the intersection point coordinates
             intersection_point = self.prev_waypt + scalar_factor * self._des_unit_vec
             
-            self.x[0:3] = self.next_waypt - self.vehicle.state[:3]
+            self.x[0:3] =  self.vehicle.state[:3] - self.next_waypt
             self.x[3:12] = self.vehicle.state[3:12]
-            self.x[12:15] = self.vehicle.position[:3] - intersection_point
+            self.x[12:15] = -(self.vehicle.position[:3] - intersection_point)
             
             self.vehicle.t = self.t 
             self.vehicle.state += self.generate_noise_vector() 
@@ -407,7 +408,7 @@ class MultirotorTrajEnv(SystemEnv):
                 break
 
             if (self.total_t % 10) == 0: 
-                current_lstm_input = np.concatenate([-(self.x[:3] - self.prev_pos),self.x[3:9]])
+                current_lstm_input = np.concatenate([(self.x[:3] - self.prev_pos),self.x[3:9]])
                 current_lstm_input = self.normalize_lstm_input(current_lstm_input)
                 self.lstm_input.append(current_lstm_input)
                 self.lstm_input.pop(0)
@@ -419,7 +420,8 @@ class MultirotorTrajEnv(SystemEnv):
         disturbance_estimation = disturbance_estimation.cpu().detach().numpy()[0]
         self.disturbance_pred = disturbance_estimation
 
-        observed_state = np.concatenate([self.next_waypt - self.x[:3], self.x[3:15],  disturbance_estimation[0:2]], dtype=np.float32)
+        observed_state = np.concatenate([self.x[0:15],  disturbance_estimation[0:2]], dtype=np.float32)
+        self.observed_state = observed_state
         return self.normalize_state(observed_state), reward, done, *_, i
     
     def normalize_lstm_input(self, input):

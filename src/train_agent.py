@@ -13,19 +13,19 @@ from systems.lstm_env import Multirotor, MultirotorTrajEnv, VP
 from systems.long_multirotor_wind_estimation import LongTrajEnv
 from environments import OctorotorEnvSelector
 from trajectories import square_100, circle_100, nasa_wp
-
+from parameters import pid_params
 
 if __name__=='__main__':
-    wp_options = [square_100, circle_100, nasa_wp]
+    wp_options = [square_100]
     env_selector = OctorotorEnvSelector()
-    best_params = {'steps_u':50, 'scaling_factor':4, 'window_distance':20}
-    env = env_selector.get_env("lstm", best_params, [(0,5), (0,5), (0,0)], square_100, start_alt=30, has_turbulence=True)
+    best_params = {'steps_u':50, 'scaling_factor':4, 'window_distance':30, 'pid_parameters': pid_params()}
+    env = env_selector.get_env("lstm", best_params, [(5,12), (5,12), (0,0)], square_100, start_alt=30, has_turbulence=True)
     env.wp_options = wp_options
-    env.base_env.fault_type="random"
+    env.base_env.fault_type=None
     
-    ppo = PPO(policy="MlpPolicy", env=env, learning_rate=1e-4, n_epochs=3, n_steps=100, 
-              policy_kwargs=dict(squash_output=False,net_arch=[dict(pi=[128]*3, vf=[128]*3)]), verbose=1, tensorboard_log='./logs/agent_train')
+    ppo = PPO(policy="MlpPolicy", env=env, learning_rate=1.39e-05, n_epochs=2, n_steps=2500, 
+              policy_kwargs=dict(squash_output=False,net_arch=[dict(pi=[64]*3, vf=[64]*3)]), verbose=1, tensorboard_log='./logs/agent_train')
     
-    checkpoint_callback = CheckpointCallback(save_freq=5000, save_path="./saved_models/", name_prefix="lstm_agent_random")
+    checkpoint_callback = CheckpointCallback(save_freq=5000, save_path="./saved_models/", name_prefix="lstm_agent_long")
     
-    agent = ppo.learn(total_timesteps=250000, progress_bar=True, callback=checkpoint_callback)
+    agent = ppo.learn(total_timesteps=500000, progress_bar=True, callback=checkpoint_callback)

@@ -140,7 +140,7 @@ class LongTrajEnv:
         if not done:
             if info.get('tipped') or info.get('outoftime') or info.get('crashed'):
                 done = True
-                reward -= 5000 # negative reward for not finishing (equivalent to 15 seconds outside the radius)
+                reward -= 50000 # negative reward for not finishing (equivalent to 15 seconds outside the radius)
 
         return s, reward, done, info
     

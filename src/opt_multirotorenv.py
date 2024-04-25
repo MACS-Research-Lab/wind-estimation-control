@@ -88,18 +88,19 @@ def get_study(study_name: str=DEFAULTS.study_name, seed:int=0, args: Namespace=D
 
 def objective(trial: optuna.Trial):
     
-    scaling_factor = trial.suggest_int('scaling_factor', 2, 5, step=1) # for now, use this to determine the action range
-    wind_d = trial.suggest_int("window_distance", 10, 20)
+    # scaling_factor = trial.suggest_int('scaling_factor', 3, 5, step=1) # for now, use this to determine the action range
+    scaling_factor = 1 # (-0.5, 0.5)
+    wind_d = trial.suggest_int("window_distance", 20, 30)
     
     policy_layers = trial.suggest_categorical("policy_layers", [1,2,3])
     policy_size = trial.suggest_int("policy_size", 32, 256, step=32)
 
     learning_rate = trial.suggest_float('learning_rate', 1e-8, 1e-3, log=True)
     n_epochs = trial.suggest_int('n_epochs', 1, 5)
-    n_steps = trial.suggest_int('n_steps', 16, 12000, step=16) # what if we allow this to be much higher?
+    n_steps = trial.suggest_int('n_steps', 1000, 6000, step=16) # what if we allow this to be much higher?
     # n_steps = 4000 // env_kwargs['steps_u'] # expect around 4000 when interacts every timestep
     batch_size = trial.suggest_int('batch_size', 32, 256, step=32)
-    total_timesteps = trial.suggest_categorical('total_timesteps', [50000, 100000])
+    total_timesteps = trial.suggest_categorical('total_timesteps', [50000, 100000, 150000, 200000])
     
     
 
@@ -115,7 +116,7 @@ def objective(trial: optuna.Trial):
     )
     
     best_params = {'steps_u':50, 'scaling_factor':scaling_factor, 'window_distance':wind_d, 'pid_parameters': pid_parameters}
-    env = env_selector.get_env("lstm", best_params, [(5,12), (5,12), (0,0)], square_100, start_alt=30, has_turbulence=True)
+    env = env_selector.get_env("lstm", best_params, [(10,12), (10,12), (0,0)], square_100, start_alt=30, has_turbulence=True, cardinal_wind=True)
     env.wp_options = wp_options
     env.base_env.fault_type=None
     
@@ -124,7 +125,7 @@ def objective(trial: optuna.Trial):
               batch_size=batch_size, verbose=0)
     
     agent = ppo.learn(total_timesteps=total_timesteps, progress_bar=True)
-    agent.save(f'./saved_models/lower_pid/{trial.number}')
+    agent.save(f'./saved_models/higher_actions/{trial.number}')
     
     done = False
     env = env_selector.get_env("lstm", best_params, [(12,12), (0,0), (0,0)], square_100, start_alt=30, has_turbulence=True)

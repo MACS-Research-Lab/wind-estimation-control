@@ -55,7 +55,7 @@ class OctorotorEnvSelector():
             "default": (DefaultEnv, SlidingLongEnv)
         }
     
-    def get_env(self, env_name: str, params: dict, wind_range: list, waypts: np.ndarray, start_alt: int = 0, has_turbulence: bool = False):
+    def get_env(self, env_name: str, params: dict, wind_range: list, waypts: np.ndarray, start_alt: int = 0, has_turbulence: bool = False, cardinal_wind=False):
         base_env_class, long_env_class = self.envs[env_name]
         
         leash = env_name == "leashed"
@@ -83,7 +83,8 @@ class OctorotorEnvSelector():
             initial_waypoints = waypts,
             randomize_direction= False,
             window_distance = params['window_distance'],
-            has_turbulence = has_turbulence
+            has_turbulence = has_turbulence,
+            random_cardinal_wind=cardinal_wind
         )
 
         long_env.start_alt = start_alt

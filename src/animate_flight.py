@@ -13,85 +13,111 @@ def parse_command_line():
     parser.add_argument("--video_name", help="Name of the output video file")
     return parser.parse_args()
 
-def plot_frame(curr_data, prev_positions, x_range, y_range, z_range):
+def plot_uav(ax, X, Y, Z, roll, pitch, yaw):
+    roll=pitch=yaw=0
+    l = 0.635
+    angle = np.pi / 8
+    angles = np.arange(0, 2*np.pi, np.pi/4) + np.pi / 2
+    motors = l * np.vstack([np.cos(angles), np.sin(angles), np.zeros(8)]).T
 
-    prev_positions = np.array(prev_positions)
-    # Create a figure and a 3D axis
-    fig = plt.figure()
+    # Define transformation matrices
+    R_roll = np.array([
+        [1, 0, 0],
+        [0, np.cos(roll), -np.sin(roll)],
+        [0, np.sin(roll), np.cos(roll)]
+    ])
+
+    R_pitch = np.array([
+        [np.cos(pitch), 0, np.sin(pitch)],
+        [0, 1, 0],
+        [-np.sin(pitch), 0, np.cos(pitch)]
+    ])
+
+    R_yaw = np.array([
+        [np.cos(yaw), -np.sin(yaw), 0],
+        [np.sin(yaw), np.cos(yaw), 0],
+        [0, 0, 1]
+    ])
+
+    # Combine rotation matrices
+    R = np.dot(R_yaw, np.dot(R_pitch, R_roll))
+
+    shift = np.array([X, Y, Z])
+    # Transform motor coordinates
+    transformed_motors = np.dot(R, motors.T).T + shift
+
+
+    # Plot motors
+    # ax.scatter(transformed_motors[:, 0], transformed_motors[:, 1], transformed_motors[:, 2], color='b')
+
+    # Connect motors to form the UAV body
+    for i in range(8):
+        ax.plot([X, transformed_motors[(i + 1) % 8, 0]],
+                [Y, transformed_motors[(i + 1) % 8, 1]],
+                [Z, transformed_motors[(i + 1) % 8, 2]], color='r', linewidth=0.5) 
+
+def plot_frame(fig, curr_data, prev_positions, full_data, x_range, y_range, z_range):
+    
+    prev_positions = pd.concat([prev_positions, pd.DataFrame({'X': -10000, 'Y': -10000, 'Z': -10000, 'TTE': 0}, index=[0])], ignore_index=True)
+    prev_positions = pd.concat([prev_positions, pd.DataFrame({'X': -10000, 'Y': -10000, 'Z': -10000, 'TTE': 100000}, index=[0])], ignore_index=True)
+    
     ax = fig.add_subplot(111, projection='3d')
+    
+    # colors = np.array(np.abs(prev_positions['TTE']) <= 2).astype(int)
+    colors = np.clip(np.abs(prev_positions['TTE']), 0, 2)
+
 
     # Plot the data points
-    ax.scatter(curr_data['X'], curr_data['Y'], curr_data['Z'])
-    ax.scatter(prev_positions[:,0], prev_positions[:,1], prev_positions[:,2], s=1, c=prev_positions[:,3], cmap='RdYlGn', alpha=0.5)
+    # ax.scatter(curr_data['X'], curr_data['Y'], curr_data['Z'], label='UAV')
+    scatter_safety = ax.scatter(prev_positions['X'], prev_positions['Y'], prev_positions['Z'], s=1, c=colors, cmap='RdYlGn_r', alpha=0.5)
+    ax.scatter(full_data['WPX'], full_data['WPY'], full_data['WPZ'], s=1, c='black', marker='x', label='Waypoints')
+    plot_uav(ax, curr_data['X'], curr_data['Y'], curr_data['Z'], curr_data['Roll'], curr_data['Pitch'], curr_data['Yaw'])
+    
+    cbar = plt.colorbar(scatter_safety)
+    cbar.set_label('Deviation (m)')
     
     # Set labels and title
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    ax.set_title('3D Scatter Plot')
+    ax.set_xlabel('X (m)')
+    ax.set_ylabel('Y (m)')
+    ax.set_zlabel('Z (m)')
     
     ax.set_xlim(x_range[0], x_range[1])
     ax.set_ylim(y_range[0], y_range[1])
     ax.set_zlim(z_range[0], z_range[1])
-
-    # Show plot
-    plt.savefig('./figures/test.png')
-    # plt.close()
+    
+    ax.view_init(elev=20)
+    # plt.legend()
     
     return fig
-    
-    
-def animate_frames(frames):
-
-    # Define the update function for animation
-    def update(frame):
-        plt.close()
-        return frame
-
-    # Create the animation
-    ani = FuncAnimation(plt.figure(), update, frames=frames, interval=100)
-
-    # Save the animation as a video file
-    ani.save('./figures/animation.mp4', writer='ffmpeg')
 
 
 
 if __name__ == "__main__":
     args = parse_command_line()
     
+    frameskip = 50
     data = pd.read_csv(args.data_location)
+    data = data.iloc[::frameskip].reset_index()
     safe_color = 0
     unsafe_color = 1
     
     offset = 10
-    x_range = (min(data['X'])-offset, max(data['X'])+offset)
-    y_range = (min(data['Y'])-offset, max(data['Y'])+offset)
-    z_range = (min(data['Z'])-offset, max(data['Z'])+offset)
+    x_range = (min(data['X'])-offset/2, max(data['X'])+offset/2)
+    y_range = (min(data['Y'])-offset/2, max(data['Y'])+offset/2)
+    z_range = (min(data['Z'])-offset/2, max(data['Z'])+offset/2)
+        
+    fig = plt.figure()
     
-    previous_pos = [[data.iloc[0]['X'], data.iloc[0]['Y'], data.iloc[0]['Z'], safe_color]]
-    frames = []
-    for i, row in tqdm(data.iloc[::50].iterrows(), total=data.iloc[::50].shape[0]):
-        frame = plot_frame(row, prev_positions=previous_pos, x_range=x_range, y_range=y_range, z_range=z_range)
-        noise = np.random.normal(2, 1)
-        was_safe = np.abs(row['TTE']) > 2
-        curr_color = safe_color if was_safe else unsafe_color
-        previous_pos.append([row['X'], row['Y'], row['Z'], curr_color])
-        frames.append(frame)
-        
-        
-    # animate_frames(frames)
-    fig, ax = plt.subplots()
+    ax = fig.add_subplot(111, projection='3d')
 
     # Function to update the animation
-    def update(frame):
+    def update(frame_num):
         fig.clear()
-        fig_new = frames[frame]  # Get the figure object for the current frame
-        # fig_new.set_size_inches(fig.get_size_inches())  # Match the size of the original figure
-        # fig_new.tight_layout()  # Adjust layout if necessary
+        fig_new = plot_frame(fig, data.iloc[frame_num], data.iloc[:frame_num], data, x_range, y_range, z_range) 
         return fig_new
-
+    
     # Create animation
-    ani = FuncAnimation(fig, update, frames=len(frames), interval=200)
+    ani = FuncAnimation(fig, update, frames=data.shape[0], interval=100)
     
     ani.save('./figures/animation.mp4', writer='ffmpeg')
         
