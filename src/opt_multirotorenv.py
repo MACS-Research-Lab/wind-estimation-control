@@ -125,7 +125,7 @@ def objective(trial: optuna.Trial):
               batch_size=batch_size, verbose=0)
     
     agent = ppo.learn(total_timesteps=total_timesteps, progress_bar=True)
-    agent.save(f'./saved_models/higher_actions/{trial.number}')
+    agent.save(f'./saved_models/higher_actions_noZ/{trial.number}')
     
     done = False
     env = env_selector.get_env("lstm", best_params, [(12,12), (0,0), (0,0)], square_100, start_alt=30, has_turbulence=True)
@@ -135,6 +135,28 @@ def objective(trial: optuna.Trial):
     
     state = np.array(env.reset(), dtype=np.float32)
     rewards = []
+    while not done:
+        action = agent.predict(state, deterministic=True)[0]
+        state, reward, done, info = env.step(action)
+        rewards.append(reward)
+        state = np.array(state, dtype=np.float32)
+        
+    env = env_selector.get_env("lstm", best_params, [(0,0), (12,12), (0,0)], square_100, start_alt=30, has_turbulence=True)
+    wp_options = [square_100]
+    env.wp_options = wp_options
+    env.base_env.fault_type=None
+    
+    while not done:
+        action = agent.predict(state, deterministic=True)[0]
+        state, reward, done, info = env.step(action)
+        rewards.append(reward)
+        state = np.array(state, dtype=np.float32)
+        
+    env = env_selector.get_env("lstm", best_params, [(0,0), (0,0), (0,0)], square_100, start_alt=30, has_turbulence=True)
+    wp_options = [square_100]
+    env.wp_options = wp_options
+    env.base_env.fault_type=None
+    
     while not done:
         action = agent.predict(state, deterministic=True)[0]
         state, reward, done, info = env.step(action)

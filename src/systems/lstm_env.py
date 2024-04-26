@@ -138,7 +138,7 @@ class MultirotorTrajEnv(SystemEnv):
             shape=(17,), dtype=self.dtype
         )
         self.action_space = gym.spaces.Box(
-            low=-1, high=1, shape=(3,), dtype=self.dtype
+            low=-1, high=1, shape=(2,), dtype=self.dtype
         )
         
         self.ekf = getattr(self.vehicle, 'ekf', False)
@@ -431,6 +431,8 @@ class MultirotorTrajEnv(SystemEnv):
 
 
     def cascade_pid(self, ref_pos, vel, pos, eul, rate, pos_pid, vel_pid, action=np.array([0,0,0])):
+        if len(action) < 3:
+            action = np.array([action[0], action[1], 0])
         max_vel = self.max_velocity # make a parameter
         if self.total_t % 5 - 1 == 0:
             # Then we should get an update from the position and velocity controller

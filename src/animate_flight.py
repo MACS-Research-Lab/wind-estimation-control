@@ -95,7 +95,7 @@ def plot_frame(fig, curr_data, prev_positions, full_data, x_range, y_range, z_ra
 if __name__ == "__main__":
     args = parse_command_line()
     
-    frameskip = 50
+    frameskip = 1
     data = pd.read_csv(args.data_location)
     data = data.iloc[::frameskip].reset_index()
     safe_color = 0
