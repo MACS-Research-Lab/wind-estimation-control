@@ -153,7 +153,7 @@ class MultirotorTrajEnv(SystemEnv):
         self.steps_u = steps_u
 
         # self.period = 150*2 #TODO: CHANGED THIS # seconds
-        self.period = 180 #TODO: CHANGED THIS # seconds
+        self.period = 240 #TODO: CHANGED THIS # seconds
         self._proximity = proximity
         self.always_modify_wind = False
         self.random_cardinal_wind = False
@@ -363,6 +363,7 @@ class MultirotorTrajEnv(SystemEnv):
             
             if self.fault_type is not None and (self.total_t/100 > self.fault_t):
                 speeds *= self.fault_mult 
+                print("fault")
 
             speeds = np.clip(speeds, a_min=0, a_max=670) 
             self.vehicle.speeds = speeds

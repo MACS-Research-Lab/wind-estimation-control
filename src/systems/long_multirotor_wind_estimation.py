@@ -79,7 +79,7 @@ class LongTrajEnv:
         # self.base_env.next_waypt = self.initial_waypoints[self.real_waypt_idx]
         self.base_env.vehicle.position[2] = self.start_alt
         
-        self.base_env.fault_type = None
+        # self.base_env.fault_type = None
         if self.base_env.fault_type == "random":
             fault_idx = np.random.choice(8)
             fault_idx = 0
