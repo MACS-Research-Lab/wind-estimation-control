@@ -60,7 +60,7 @@ class LongTrajEnv:
         self.base_env.completed_distance = 0
         self.base_env.random_cardinal_wind = self.random_cardinal_wind
         self.base_env.total_t = 0
-        self.base_env.lstm_input = [np.zeros(9)] * 10
+        self.base_env.lstm_input = [np.zeros(9)] * 5 # 10 before
         self.base_env.prev_pos = np.zeros(3)
         # TODO: make sure this works for all trajectories
         self.base_env.prev_waypt = np.array([0,0,self.start_alt])
@@ -79,7 +79,7 @@ class LongTrajEnv:
         # self.base_env.next_waypt = self.initial_waypoints[self.real_waypt_idx]
         self.base_env.vehicle.position[2] = self.start_alt
         
-        self.base_env.fault_type = None
+        # self.base_env.fault_type = None
         if self.base_env.fault_type == "random":
             fault_idx = np.random.choice(8)
             fault_idx = 0

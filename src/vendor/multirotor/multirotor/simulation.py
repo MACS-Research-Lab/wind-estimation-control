@@ -468,7 +468,7 @@ class Multirotor:
         Psi = state[8]
 
         g=9.80
-        m_t=10.66
+        m_t=self.mass
         l=0.635
 
         R_b_e = np.array([[np.cos(Psi)*np.cos(The), np.cos(Psi)*np.sin(The)*np.sin(Phi)-np.sin(Psi)*np.cos(Phi), np.cos(Psi)*np.sin(The)*np.cos(Phi)+np.sin(Psi)*np.sin(Phi)],

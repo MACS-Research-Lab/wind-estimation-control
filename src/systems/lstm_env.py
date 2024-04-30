@@ -8,6 +8,7 @@ import torch
 from multirotor.coords import direction_cosine_matrix, inertial_to_body, body_to_inertial
 import numpy as np
 from stable_baselines3.ppo import PPO
+from scipy.interpolate import interp1d
 import control
 import gym
 from tqdm.autonotebook import tqdm
@@ -153,7 +154,7 @@ class MultirotorTrajEnv(SystemEnv):
         self.steps_u = steps_u
 
         # self.period = 150*2 #TODO: CHANGED THIS # seconds
-        self.period = 180 #TODO: CHANGED THIS # seconds
+        self.period = 240 #TODO: CHANGED THIS # seconds
         self._proximity = proximity
         self.always_modify_wind = False
         self.random_cardinal_wind = False
@@ -177,6 +178,8 @@ class MultirotorTrajEnv(SystemEnv):
         self.safety_leashing = True
         self.pid_parameters = pid_parameters
         self.observed_state = np.zeros(17)
+        
+        self.vehicle.mass = 10.66
 
     
 
@@ -265,7 +268,7 @@ class MultirotorTrajEnv(SystemEnv):
         self._max_pos = self.safety_radius * (1 + self.overshoot_factor) / 2
         # self._max_angle = self.ctrl.ctrl_v.max_tilt * (1 + self.overshoot_factor)
         # self._max_angle = self.ctrl.ctrl_v.max_tilt * 2
-        self._max_angle = np.deg2rad(22.5) * 2
+        self._max_angle = np.deg2rad(22.5) * 2 * 2
         
         self.time_penalty = self.dt * self.steps_u
 
@@ -363,6 +366,7 @@ class MultirotorTrajEnv(SystemEnv):
             
             if self.fault_type is not None and (self.total_t/100 > self.fault_t):
                 speeds *= self.fault_mult 
+                print("fault")
 
             speeds = np.clip(speeds, a_min=0, a_max=670) 
             self.vehicle.speeds = speeds
@@ -415,6 +419,16 @@ class MultirotorTrajEnv(SystemEnv):
                 
                 self.prev_pos = self.x[:3].copy()
                 
+        # interpolated_input = self.interpolate_lstm_input(self.lstm_input)
+        # lstm_input_tensor = torch.Tensor(np.array(interpolated_input)).unsqueeze(0).to(device)
+        # disturbance_estimation = self.lstm(lstm_input_tensor)
+        # disturbance_estimation = disturbance_estimation.cpu().detach().numpy()[0]
+        # self.disturbance_pred = disturbance_estimation
+
+        # observed_state = np.concatenate([self.x[0:15],  disturbance_estimation[0:2]], dtype=np.float32)
+        # self.observed_state = observed_state
+        # return self.normalize_state(observed_state), reward, done, *_, i
+
         lstm_input_tensor = torch.Tensor(np.array(self.lstm_input)).unsqueeze(0).to(device)
         disturbance_estimation = self.lstm(lstm_input_tensor)
         disturbance_estimation = disturbance_estimation.cpu().detach().numpy()[0]
@@ -425,26 +439,64 @@ class MultirotorTrajEnv(SystemEnv):
         return self.normalize_state(observed_state), reward, done, *_, i
     
     def normalize_lstm_input(self, input):
+        # Normalization constants
         normalization = np.array([1.5, 1.5, 1.5, 15, 15, 15, np.pi/12, np.pi/12, np.pi/12])
 
         return input / normalization
 
+    def interpolate_lstm_input(self, states):
+        states = np.array(states)
+        original_t = np.array([0, 0.25, 0.5, 0.75, 1])
+
+        new_t = np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) # TODO: verify this
+        cubic_interp_funcs = [interp1d(original_t, states[:, i], kind='cubic') for i in range(states.shape[1])]
+        interpolated = np.array([interp(new_t) for interp in cubic_interp_funcs]).T
+        return interpolated
+
+
+    # def cascade_pid(self, ref_pos, vel, pos, eul, rate, pos_pid, vel_pid, action=np.array([0,0,0])):
+    #     if len(action) < 3:
+    #         action = np.array([action[0], action[1], 0])
+    #     max_vel = self.max_velocity # make a parameter
+    #     if self.total_t % 5 - 1 == 0:
+    #         # Then we should get an update from the position and velocity controller
+    #         # otherwise, just use our previous angle reference
+    #         inert_ref_vel = pos_controller(ref_pos, pos, pos_pid)
+    #         inert_ref_vel = np.clip(inert_ref_vel, -max_vel, max_vel)
+    #         inert_ref_vel_leashed = vel_leash(inert_ref_vel, eul, max_vel)
+    #         ref_vel = np.array([inert_ref_vel_leashed[0], inert_ref_vel_leashed[1], inert_ref_vel[2]])
+    #         ref_vel += action
+
+    #         angle_ref = vel_controller(ref_vel, vel, vel_pid)
+    #         self.angle_ref = angle_ref
+        
+    #     zforce_ref = self.angle_ref[2]
+
+    #     theta_phi_ref = self.angle_ref[[1,0]] # swap roll and pitch
+    #     rate_ref = angle_controller(theta_phi_ref, eul, self.pid_parameters.att_p)
+
+    #     torque_ref = rate_controller(rate_ref, rate, self.pid_parameters.rate_p)
+
+    #     return self.vehicle.allocate_control(zforce_ref, torque_ref)
 
     def cascade_pid(self, ref_pos, vel, pos, eul, rate, pos_pid, vel_pid, action=np.array([0,0,0])):
         if len(action) < 3:
             action = np.array([action[0], action[1], 0])
         max_vel = self.max_velocity # make a parameter
-        if self.total_t % 5 - 1 == 0:
+        if self.total_t % 25 - 1 == 0:
             # Then we should get an update from the position and velocity controller
             # otherwise, just use our previous angle reference
             inert_ref_vel = pos_controller(ref_pos, pos, pos_pid)
             inert_ref_vel = np.clip(inert_ref_vel, -max_vel, max_vel)
             inert_ref_vel_leashed = vel_leash(inert_ref_vel, eul, max_vel)
-            ref_vel = np.array([inert_ref_vel_leashed[0], inert_ref_vel_leashed[1], inert_ref_vel[2]])
-            ref_vel += action
+            self.inert_ref_vel_leashed = inert_ref_vel_leashed
+            self.inert_ref_vel = inert_ref_vel
 
-            angle_ref = vel_controller(ref_vel, vel, vel_pid)
-            self.angle_ref = angle_ref
+        ref_vel = np.array([self.inert_ref_vel_leashed[0], self.inert_ref_vel_leashed[1], self.inert_ref_vel[2]])
+        ref_vel += action
+
+        angle_ref = vel_controller(ref_vel, vel, vel_pid)
+        self.angle_ref = angle_ref
         
         zforce_ref = self.angle_ref[2]
 

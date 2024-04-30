@@ -62,6 +62,7 @@ def plot_frame(fig, curr_data, prev_positions, full_data, x_range, y_range, z_ra
     prev_positions = pd.concat([prev_positions, pd.DataFrame({'X': -10000, 'Y': -10000, 'Z': -10000, 'TTE': 100000}, index=[0])], ignore_index=True)
     
     ax = fig.add_subplot(111, projection='3d')
+    fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
     
     # colors = np.array(np.abs(prev_positions['TTE']) <= 2).astype(int)
     colors = np.clip(np.abs(prev_positions['TTE']), 0, 2)
@@ -69,11 +70,17 @@ def plot_frame(fig, curr_data, prev_positions, full_data, x_range, y_range, z_ra
 
     # Plot the data points
     # ax.scatter(curr_data['X'], curr_data['Y'], curr_data['Z'], label='UAV')
-    scatter_safety = ax.scatter(prev_positions['X'], prev_positions['Y'], prev_positions['Z'], s=1, c=colors, cmap='RdYlGn_r', alpha=0.5)
-    ax.scatter(full_data['WPX'], full_data['WPY'], full_data['WPZ'], s=1, c='black', marker='x', label='Waypoints')
+    scatter_safety = ax.scatter(prev_positions['X'], prev_positions['Y'], prev_positions['Z'], s=1, c=colors, cmap='viridis', alpha=1)
+    ax.scatter(full_data['WPX'], full_data['WPY'], full_data['WPZ'], s=2, c='black', marker='x', label='Waypoints')
+    
+    wind_direction = [curr_data['Wind X'], curr_data['Wind Y'], 0]
+    ax.quiver([x_range[1]+20], [y_range[0]], [z_range[0]+5],
+            wind_direction[0], wind_direction[1], wind_direction[2],
+            length=np.linalg.norm([curr_data['Wind X'], curr_data['Wind Y']])/2, color='b', alpha=0.5, arrow_length_ratio=0.05)
+
     plot_uav(ax, curr_data['X'], curr_data['Y'], curr_data['Z'], curr_data['Roll'], curr_data['Pitch'], curr_data['Yaw'])
     
-    cbar = plt.colorbar(scatter_safety)
+    cbar = plt.colorbar(scatter_safety, shrink=0.6)
     cbar.set_label('Deviation (m)')
     
     # Set labels and title
@@ -108,6 +115,7 @@ if __name__ == "__main__":
         
     fig = plt.figure()
     
+    
     ax = fig.add_subplot(111, projection='3d')
 
     # Function to update the animation
@@ -117,9 +125,9 @@ if __name__ == "__main__":
         return fig_new
     
     # Create animation
-    ani = FuncAnimation(fig, update, frames=data.shape[0], interval=100)
+    ani = FuncAnimation(fig, update, frames=data.shape[0], interval=75)
     
-    ani.save('./figures/animation.mp4', writer='ffmpeg')
+    ani.save(f'./figures/{args.video_name}.mp4', writer='ffmpeg')
         
     
     
